@@ -50,7 +50,6 @@ class AlternatingAttention(object):
 
         # Answer probability
         P_a = tf.pack([tf.reduce_sum(tf.gather(tf.squeeze(doc_attentions)[i, :], tf.where(tf.equal(a, self._docs[i, :])))) for i, a in enumerate(tf.unpack(self._answers))])
-        self._variable_summaries(P_a, 'probabilities')
         loss_op = -tf.reduce_mean(tf.log(tf.clip_by_value(P_a,1e-10,1.0)))
 
         self._loss_op = loss_op
@@ -72,6 +71,10 @@ class AlternatingAttention(object):
         self._sess.run(tf.initialize_all_variables())
 
     def _build_placeholders(self):
+        """
+        Adds tensorflow placeholders for inputs to the model: documents, queries, answers.
+        keep_prob and learning_rate are hyperparameters that we might like to adjust while training.
+        """
         batch_size, doc_len, query_len = self._batch_size, self._doc_len, self._query_len
         self._docs = tf.placeholder(tf.int32, [self._batch_size, self._doc_len])
         self._queries = tf.placeholder(tf.int32, [self._batch_size, self._query_len])
@@ -92,11 +95,17 @@ class AlternatingAttention(object):
             self._g_d = tf.get_variable("g_d", [self._batch_size, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
 
     def _embed(self, sequence, seq_len):
+        """
+        performs embedding lookups for every word in the sequence
+        """
         with tf.variable_scope('embed'):
             embedded = tf.nn.embedding_lookup(self._embeddings, sequence)
             return embedded
 
     def _bidirectional_encode(self, sequence, seq_len, size):
+        """
+        Encodes sequence with two GRUs, one forward, one backward, and returns the concatenation
+        """
         with tf.variable_scope('encode'):
             with tf.variable_scope("_FW") as fw_scope:
                 fw_encode = tf.nn.rnn_cell.GRUCell(size)
@@ -120,6 +129,12 @@ class AlternatingAttention(object):
             return encoded
 
     def _glimpse(self, weights, bias, encodings, inputs):
+        """
+        Computes glimpse over an encoding. Attention weights are computed based on the bilinear product of
+        the encodings, weight matrix, and inputs.
+
+        Returns attention weights and computed glimpse
+        """
         tf.nn.dropout(weights, self._keep_prob)
         tf.nn.dropout(inputs, self._keep_prob)
         attention = tf.batch_matmul(weights, inputs) + bias
@@ -128,6 +143,9 @@ class AlternatingAttention(object):
         return attention, tf.reduce_sum(attention * encodings, 1)
 
     def _inference(self, docs, queries):
+        """
+        Computes document attentions given a document batch and query batch.
+        """
         with tf.variable_scope(self._name):
             # Encode Document / Query
             with tf.variable_scope('docs'):
@@ -161,23 +179,17 @@ class AlternatingAttention(object):
             return d_attention
 
     def batch_fit(self, docs, queries, answers, learning_rate=1e-3):
+        """
+        Perform a batch training iteration
+        """
         feed_dict = { self._docs: docs, self._queries: queries, self._answers: answers, self._keep_prob: 0.8, self._learning_rate: learning_rate}
         loss, summary, _, step = self._sess.run([self._loss_op, self._summary_op, self._train_op, self._global_step], feed_dict=feed_dict)
         return loss, summary, step
 
     def batch_predict(self, docs, queries, answers):
+        """
+        Perform batch prediction. Computes accuracy of batch predictions.
+        """
         feed_dict = { self._docs: docs, self._queries: queries, self._answers: answers, self._keep_prob: 1. }
         loss, summary, accuracy = self._sess.run([self._loss_op, self._summary_op, self._accuracy_op], feed_dict=feed_dict)
         return loss, summary, accuracy
-
-    def _variable_summaries(self, var, name):
-        """Attach a lot of summaries to a Tensor."""
-        with tf.name_scope('summaries'):
-            mean = tf.reduce_mean(var)
-            tf.scalar_summary('mean/' + name, mean)
-            with tf.name_scope('stddev'):
-                stddev = tf.sqrt(tf.reduce_sum(tf.square(var - mean)))
-            tf.scalar_summary('sttdev/' + name, stddev)
-            tf.scalar_summary('max/' + name, tf.reduce_max(var))
-            tf.scalar_summary('min/' + name, tf.reduce_min(var))
-            tf.histogram_summary(name, var)
