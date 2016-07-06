@@ -97,8 +97,12 @@ def vectorize_stories(data, word_idx, story_maxlen, query_maxlen):
             np.array(Y))
 
 
-def load_data():
-    train_stories = get_stories(open(os.path.join(path, train_file)))
+def load_data(debug=False):
+    if debug:
+        train_stories = get_stories(open(os.path.join(path, test_file)))
+    else:
+        train_stories = get_stories(open(os.path.join(path, train_file)))
+        
     test_stories = get_stories(open(os.path.join(path, valid_file)))
 
     vocab = sorted(reduce(lambda x, y: x | y, (set(story + q + [answer]) for story, q, answer in train_stories + test_stories)))
