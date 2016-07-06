@@ -7,9 +7,9 @@ from model import AlternatingAttention
 import os
 import time
 
-tf.flags.DEFINE_integer("embedding_dim", 384, "Dimensionality of character embedding (default: 128)")
+tf.flags.DEFINE_integer("embedding_dim", 384, "Dimensionality of character embedding (default: 384)")
 tf.flags.DEFINE_integer("encoding_dim", 128, "Dimensionality of bidirectional GRU encoding for query / document")
-tf.flags.DEFINE_integer("num_glimpses", 8, "Number of glimpse iterations during read")
+tf.flags.DEFINE_integer("num_glimpses", 8, "Number of glimpse iterations during read (default: 8)")
 tf.flags.DEFINE_float("dropout_keep_prob", 0.8, "Dropout keep probability (default: 0.8)")
 tf.flags.DEFINE_float("l2_reg_lambda", 1e-4, "L2 regularizaion lambda (default: 0.0001)")
 tf.flags.DEFINE_float("learning_rate", 1e-3, "AdamOptimizer learning rate (default: 0.001)")
@@ -21,6 +21,10 @@ tf.flags.DEFINE_integer("num_epochs", 12, "Number of training epochs (default: 1
 tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on validation set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 10000, "Save model after this many steps (default: 10000)")
 
+tf.flags.DEFINE_boolean("debug", False, "Debug (load smaller dataset)")
+tf.flags.DEFINE_boolean("trace", False, "Whether to generate a debug trace of training step")
+tf.flags.DEFINE_string("trace_file", "timeline.ctf.json", "Chrome tracefile name for debugging model (default: timeline.ctf.json)")
+
 FLAGS = tf.flags.FLAGS
 FLAGS._parse_flags()
 print("\nParameters:")
@@ -29,7 +33,7 @@ for attr, value in sorted(FLAGS.__flags.items()):
 print("")
 
 # Load Data
-X_train, Q_train, Y_train, X_valid, Q_valid, Y_valid = load_data()
+X_train, Q_train, Y_train, X_valid, Q_valid, Y_valid = load_data(FLAGS.debug)
 
 vocab_size = np.max(X_train) + 1
 doc_len = len(X_train[0])
@@ -43,7 +47,6 @@ def get_batch(X, Q, Y, batch_size):
     for start in range(0, len(X) - len(X) % batch_size, batch_size):
         end = start + batch_size
         yield (X[start:end], Q[start:end], Y[start:end])
-
 
 # Train Model
 with tf.Session() as sess:
@@ -60,17 +63,35 @@ with tf.Session() as sess:
     train_writer = tf.train.SummaryWriter('/tmp/logs/train', sess.graph, flush_secs=25)
     test_writer = tf.train.SummaryWriter('/tmp/logs/test', flush_secs=25)
 
-
     half_epoch = len(X_train) / 2.
     learning_rate = FLAGS.learning_rate
     last_accuracy = 0
+
+    # Perform debug trace and produce a tf Timeline for use in the chrome trace visualizer
+    if FLAGS.trace:
+        print('Performing full trace of model (for GPU trace libcupti.so must be on LD_LIBRARY_PATH. I found it in /usr/local/cuda/extras/CUPTI/lib64/)')
+        from tensorflow.python.client import timeline
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        for X, Q, Y in get_batch(X_train, Q_train, Y_train, FLAGS.batch_size):
+            model.batch_fit(X, Q, Y, learning_rate, run_options=run_options, run_metadata=run_metadata)
+            print(X, Q, Y)
+            break
+        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+        print('Writing tracefile to {}'.format(FLAGS.trace_file))
+        trace_file = open(FLAGS.trace_file, 'w')
+        trace_file.write(trace.generate_chrome_trace_format(show_dataflow=False))
+        print('Done Trace')
+
     for epoch in range(FLAGS.num_epochs):
         # Train over epoch
         for X, Q, Y in get_batch(X_train, Q_train, Y_train, FLAGS.batch_size):
             batch_loss, summary, step = model.batch_fit(X, Q, Y, learning_rate)
             train_writer.add_summary(summary, step)
+
             if step % FLAGS.evaluate_every == 0:
-                valid_loss, summary, accuracy = model.batch_predict(*random_batch(X_valid, Q_valid, Y_valid, FLAGS.batch_size))
+                batch = random_batch(X_valid, Q_valid, Y_valid, FLAGS.batch_size)
+                valid_loss, summary, accuracy = model.batch_predict(*batch)
                 if step % half_epoch == 0: # this will only happen if half_epoch is a multiple of evaluate_every so kinda hacky
                     if accuracy <= last_accuracy:
                         print("No improvement in accuracy... decaying learning rate from {} to {}", learning_rate, learning_rate * FLAGS.learning_rate_decay)
@@ -83,7 +104,6 @@ with tf.Session() as sess:
             if step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=step)
                 print("Saved model checkpoint to {}\n".format(path))
-
 
         # Validation loss after epoch
         batch_num = 0

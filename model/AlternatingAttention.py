@@ -20,7 +20,7 @@ def orthogonal_initializer(scale = 1.1):
 class AlternatingAttention(object):
     """Iterative Alternating Attention Network"""
     def __init__(self, batch_size, vocab_size, document_size, query_size, encoding_size, embedding_size,
-                    num_glimpses,
+                    num_glimpses = 8,
                     grad_norm_clip = 5.,
                     l2_reg_coef=1e-4,
                     session=tf.Session(),
@@ -45,26 +45,23 @@ class AlternatingAttention(object):
         # Regularization
         tf.contrib.layers.apply_regularization(tf.contrib.layers.l2_regularizer(l2_reg_coef), [self._embeddings])
 
-        # Loss
-        doc_attentions = self._inference(self._docs, self._queries)
 
         # Answer probability
+        doc_attentions = self._inference(self._docs, self._queries)
         P_a = tf.pack([tf.reduce_sum(tf.gather(tf.squeeze(doc_attentions)[i, :], tf.where(tf.equal(a, self._docs[i, :])))) for i, a in enumerate(tf.unpack(self._answers))])
         loss_op = -tf.reduce_mean(tf.log(tf.clip_by_value(P_a,1e-10,1.0)))
-
         self._loss_op = loss_op
         tf.scalar_summary('loss', loss_op)
-        self._accuracy_op = tf.reduce_mean(tf.cast(tf.greater(P_a, tf.constant(0.5)), tf.float32))
-        tf.scalar_summary('accuracy', self._accuracy_op)
 
+        self._doc_attentions = doc_attentions
 
         # Optimizer and gradients
-
-        self._opt = tf.train.AdamOptimizer(learning_rate=self._learning_rate)
-        grads_and_vars = self._opt.compute_gradients(loss_op)
-        capped_grads_and_vars = [(tf.clip_by_norm(g, grad_norm_clip), v) for g,v in grads_and_vars]
-        self._global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), dtype=tf.int32, trainable=False)
-        self._train_op = self._opt.apply_gradients(capped_grads_and_vars, global_step=self._global_step)
+        with tf.variable_scope("optimizer"):
+            self._opt = tf.train.AdamOptimizer(learning_rate=self._learning_rate)
+            grads_and_vars = self._opt.compute_gradients(loss_op)
+            capped_grads_and_vars = [(tf.clip_by_norm(g, grad_norm_clip), v) for g,v in grads_and_vars]
+            self._global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), dtype=tf.int32, trainable=False)
+            self._train_op = self._opt.apply_gradients(grads_and_vars, global_step=self._global_step)
 
         self._summary_op = tf.merge_all_summaries()
 
@@ -178,12 +175,12 @@ class AlternatingAttention(object):
                     _, infer_state = infer_gru(tf.concat(1, [r_q * q_glimpse, r_d * d_glimpse]), tf.squeeze(infer_state))
             return d_attention
 
-    def batch_fit(self, docs, queries, answers, learning_rate=1e-3):
+    def batch_fit(self, docs, queries, answers, learning_rate=1e-3, run_options=None, run_metadata=None):
         """
         Perform a batch training iteration
         """
         feed_dict = { self._docs: docs, self._queries: queries, self._answers: answers, self._keep_prob: 0.8, self._learning_rate: learning_rate}
-        loss, summary, _, step = self._sess.run([self._loss_op, self._summary_op, self._train_op, self._global_step], feed_dict=feed_dict)
+        loss, summary, _, step = self._sess.run([self._loss_op, self._summary_op, self._train_op, self._global_step], feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
         return loss, summary, step
 
     def batch_predict(self, docs, queries, answers):
@@ -191,5 +188,14 @@ class AlternatingAttention(object):
         Perform batch prediction. Computes accuracy of batch predictions.
         """
         feed_dict = { self._docs: docs, self._queries: queries, self._answers: answers, self._keep_prob: 1. }
-        loss, summary, accuracy = self._sess.run([self._loss_op, self._summary_op, self._accuracy_op], feed_dict=feed_dict)
-        return loss, summary, accuracy
+        loss, summary, attentions = self._sess.run([self._loss_op, self._summary_op, self._doc_attentions], feed_dict=feed_dict)
+        correct = 0.
+        for i in range(docs.shape[0]):
+            words = np.asarray(list(set(docs[i,:])))
+            accuracies = np.zeros(words.shape)
+            for j,w in enumerate(words):
+                accuracy = np.sum(attentions[i, docs[i,:] == w])
+                accuracies[j] = accuracy
+            if words[np.argmax(accuracies)] == answers[i]:
+                correct += 1
+        return loss, summary, correct / docs.shape[0]
