@@ -10,7 +10,7 @@ test_file = 'CBTest/data/cbtest_NE_test_2500ex.txt'
 valid_file = 'CBTest/data/cbtest_NE_valid_2000ex.txt'
 
 def tokenize(sentence):
-    return [s.strip() for s in re.split('(\W+)?', sentence) if s.strip()]
+    return [s.strip() for s in re.split('(\W+)+', sentence) if s.strip()]
 
 def parse_stories(lines):
     stories = []
