@@ -3,7 +3,7 @@ import numpy as np
 
 
 def orthogonal_initializer(scale = 1.1):
-    def _initializer(shape, dtype=tf.float32):
+    def _initializer(shape, dtype=tf.float32, partition_info=None):
         '''
         from keras https://github.com/fchollet/keras/blob/master/keras/initializations.py
         '''
@@ -106,12 +106,14 @@ class AlternatingAttention(object):
         with tf.variable_scope('encode'):
             with tf.variable_scope("_FW") as fw_scope:
                 fw_encode = tf.nn.rnn_cell.GRUCell(size)
-                fw_state = tf.get_variable("gru_state", [self._batch_size, fw_encode.state_size], initializer=orthogonal_initializer())
+                fw_state = tf.get_variable("gru_state", [self._batch_size, fw_encode.state_size],
+                        initializer=orthogonal_initializer())
                 output_fw, output_state_fw = tf.nn.dynamic_rnn(
                     cell=fw_encode, inputs=sequence, initial_state=fw_state, scope=fw_scope, swap_memory=True)
             with tf.variable_scope("_BW") as bw_scope:
                 bw_encode = tf.nn.rnn_cell.GRUCell(size)
-                bw_state = tf.get_variable("gru_state", [self._batch_size, bw_encode.state_size], initializer=orthogonal_initializer())
+                bw_state = tf.get_variable("gru_state", [self._batch_size, bw_encode.state_size],
+                        initializer=orthogonal_initializer())
                 inputs_reverse = tf.reverse_sequence(
                     input=sequence, seq_lengths=seq_len,
                     seq_dim=1, batch_dim=0)
