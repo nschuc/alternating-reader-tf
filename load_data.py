@@ -4,11 +4,15 @@ import numpy as np
 from functools import reduce
 import itertools
 import re
+import h5py
 
-path = 'data/'
-train_file = 'CBTest/data/cbtest_NE_train.txt'
-test_file = 'CBTest/data/cbtest_NE_test_2500ex.txt'
-valid_file = 'CBTest/data/cbtest_NE_valid_2000ex.txt'
+data_path = 'data/'
+data_filenames = {
+        'train' : 'CBTest/data/cbtest_NE_train.txt',
+        'test'  : 'CBTest/data/cbtest_NE_test_2500ex.txt',
+        'valid' : 'CBTest/data/cbtest_NE_valid_2000ex.txt'
+        }
+preprocessed = 'processed.h5'
 
 def tokenize(sentence):
     return [s.strip() for s in re.split('(\W+)+', sentence) if s.strip()]
@@ -81,7 +85,6 @@ def pad_sequences(sequences, maxlen=None, dtype='int32',
     return x
 
 
-
 def vectorize_stories(data, word_idx, story_maxlen, query_maxlen):
     X = []
     Xq = []
@@ -98,27 +101,34 @@ def vectorize_stories(data, word_idx, story_maxlen, query_maxlen):
             np.array(Y))
 
 
-def load_data(debug=False):
-    if debug:
-        train_stories = get_stories(open(os.path.join(path, test_file)))
+def load_data(dataset='train', debug=False):
+    filename = os.path.join(data_path, data_filenames[dataset])
+    # Check for preprocessed data and load that instead
+    if os.path.isfile(filename + '.h5'):
+        h5f = h5py.File(filename + '.h5', 'r')
+        X = h5f['X'][:]
+        Q = h5f['Q'][:]
+        Y = h5f['Y'][:]
+        h5f.close()
     else:
-        train_stories = get_stories(open(os.path.join(path, train_file)))
+        stories = get_stories(open(filename))
 
-    test_stories = get_stories(open(os.path.join(path, valid_file)))
+        vocab = sorted(set(itertools.chain(*(story + q + [answer] for story, q, answer in stories))))
 
-    vocab = sorted(set(itertools.chain(*(story + q + [answer] for story, q, answer in train_stories + test_stories))))
+        print(len(vocab))
+        vocab_size = len(vocab) + 1
+        story_maxlen = max(map(len, (x for x, _, _ in stories)))
+        query_maxlen = max(map(len, (x for _, x, _ in stories)))
 
-    print(len(vocab))
-    vocab_size = len(vocab) + 1
-    story_maxlen = max(map(len, (x for x, _, _ in train_stories + test_stories)))
-    story_minlen = max(map(len, (x for x, _, _ in train_stories + test_stories)))
-    query_maxlen = max(map(len, (x for _, x, _ in train_stories + test_stories)))
+        print('Vocab size:', vocab_size)
+        print('{} instances:'.format(dataset), len(stories))
 
-    print('Vocab size:', vocab_size)
-    print('Training instances:', len(train_stories))
-    print('Test instances:', len(test_stories))
+        word_idx = dict((w, i + 1) for i,w in enumerate(vocab))
+        X, Q, Y= vectorize_stories(stories, word_idx, story_maxlen, query_maxlen)
 
-    word_idx = dict((w, i + 1) for i,w in enumerate(vocab))
-    X_train, Q_train, Y_train = vectorize_stories(train_stories, word_idx, story_maxlen, query_maxlen)
-    X_test, Q_test, Y_test = vectorize_stories(test_stories, word_idx, story_maxlen, query_maxlen)
-    return X_train, Q_train, Y_train, X_test, Q_test, Y_test
+        h5f = h5py.File(filename + '.h5', 'w')
+        h5f.create_dataset('X', data=X)
+        h5f.create_dataset('Q', data=Q)
+        h5f.create_dataset('Y', data=Y)
+        h5f.close()
+    return X, Q, Y

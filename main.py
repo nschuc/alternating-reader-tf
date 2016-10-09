@@ -1,11 +1,10 @@
-from load_data import load_data
-
 import numpy as np
 import tensorflow as tf
-from model import AlternatingAttention
-
 import os
 import time
+
+from load_data import load_data
+from model import AlternatingAttention
 
 tf.flags.DEFINE_integer("embedding_dim", 384, "Dimensionality of character embedding (default: 384)")
 tf.flags.DEFINE_integer("encoding_dim", 128, "Dimensionality of bidirectional GRU encoding for query / document")
@@ -33,11 +32,16 @@ for attr, value in sorted(FLAGS.__flags.items()):
 print("")
 
 # Load Data
-X_train, Q_train, Y_train, X_valid, Q_valid, Y_valid = load_data(FLAGS.debug)
+X_train, Q_train, Y_train = load_data('train', FLAGS.debug)
+X_test, Q_test, Y_test = load_data('test', FLAGS.debug)
 
 vocab_size = np.max(X_train) + 1
 doc_len = len(X_train[0])
 query_len = len(Q_train[0])
+
+print('Vocabulary Size:', vocab_size)
+print('Fixed Document length:', doc_len)
+print('Fixed Query length:', query_len)
 
 def random_batch(X, Q, Y, batch_size):
     indices = np.random.choice(len(X) - len(X) % batch_size, batch_size)
@@ -90,7 +94,7 @@ with tf.Session() as sess:
             train_writer.add_summary(summary, step)
 
             if step % FLAGS.evaluate_every == 0:
-                batch = random_batch(X_valid, Q_valid, Y_valid, FLAGS.batch_size)
+                batch = random_batch(X_test, Q_test, Y_test, FLAGS.batch_size)
                 valid_loss, summary, accuracy = model.batch_predict(*batch)
                 if step % half_epoch == 0: # this will only happen if half_epoch is a multiple of evaluate_every so kinda hacky
                     if accuracy <= last_accuracy:
@@ -109,7 +113,7 @@ with tf.Session() as sess:
         batch_num = 0
         loss_sum = 0
         accuracy_sum = 0
-        for X, Q, Y in get_batch(X_valid, Q_valid, Y_valid, FLAGS.batch_size):
+        for X, Q, Y in get_batch(X_test, Q_test, Y_test, FLAGS.batch_size):
             batch_num += 1
             batch_loss, summary, accuracy = model.batch_predict(X, Q, Y)
             loss_sum += batch_loss
