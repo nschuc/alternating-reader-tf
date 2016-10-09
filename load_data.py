@@ -2,6 +2,7 @@ import tarfile
 import os
 import numpy as np
 from functools import reduce
+import itertools
 import re
 
 path = 'data/'
@@ -102,10 +103,11 @@ def load_data(debug=False):
         train_stories = get_stories(open(os.path.join(path, test_file)))
     else:
         train_stories = get_stories(open(os.path.join(path, train_file)))
-        
+
     test_stories = get_stories(open(os.path.join(path, valid_file)))
 
-    vocab = sorted(reduce(lambda x, y: x | y, (set(story + q + [answer]) for story, q, answer in train_stories + test_stories)))
+    vocab = sorted(set(itertools.chain(*(story + q + [answer] for story, q, answer in train_stories + test_stories))))
+
     print(len(vocab))
     vocab_size = len(vocab) + 1
     story_maxlen = max(map(len, (x for x, _, _ in train_stories + test_stories)))
