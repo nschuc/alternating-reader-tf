@@ -48,7 +48,7 @@ class AlternatingAttention(object):
 
         # Answer probability
         doc_attentions = self._inference(self._docs, self._queries)
-        P_a = tf.pack([tf.reduce_sum(tf.gather(tf.squeeze(doc_attentions)[i, :], tf.where(tf.equal(a, self._docs[i, :])))) for i, a in enumerate(tf.unpack(self._answers))])
+        P_a = tf.pack([tf.reduce_sum(tf.gather(doc_attentions[i, :], tf.where(tf.equal(a, self._docs[i, :])))) for i, a in enumerate(tf.unpack(self._answers))])
         loss_op = -tf.reduce_mean(tf.log(tf.clip_by_value(P_a,1e-10,1.0)))
         self._loss_op = loss_op
         tf.scalar_summary('loss', loss_op)
@@ -111,7 +111,7 @@ class AlternatingAttention(object):
                 output_fw, output_state_fw = tf.nn.dynamic_rnn(
                     cell=fw_encode, inputs=sequence,
                     initial_state=fw_state, scope=fw_scope,
-                    sequence_lengths=seq_lens, swap_memory=True)
+                    sequence_length=seq_lens, swap_memory=True)
 
             with tf.variable_scope("_BW") as bw_scope:
                 bw_encode = tf.nn.rnn_cell.GRUCell(size)
@@ -122,7 +122,7 @@ class AlternatingAttention(object):
                     seq_dim=1, batch_dim=0)
                 tmp, output_state_bw = tf.nn.dynamic_rnn(
                     cell=bw_encode, inputs=inputs_reverse,
-                    sequence_lengths=seq_len, initial_state = bw_state,
+                    sequence_length=seq_lens, initial_state = bw_state,
                     scope=bw_scope, swap_memory=True)
                 output_bw = tf.reverse_sequence(
                   input=tmp, seq_lengths=seq_lens,
@@ -152,11 +152,8 @@ class AlternatingAttention(object):
         """
         with tf.variable_scope(self._name):
             # Compute document lengths / query lengths for batch
-            doc_lens = tf.argmin(docs, 1)
-            doc_seq_mask = tf.sequence_mask(doc_lens, self._doc_len)
-
-            query_lens = tf.argmin(docs, 1)
-            query_seq_mask = tf.sequence_mask(query_lens, self._query_len)
+            doc_lens = tf.to_int32(tf.argmin(docs, 1))
+            query_lens = tf.to_int32(tf.argmin(queries, 1))
 
             # Encode Document / Query
             with tf.variable_scope('docs'):
@@ -187,7 +184,7 @@ class AlternatingAttention(object):
                     tf.nn.dropout(r_q, self._keep_prob)
 
                     _, infer_state = infer_gru(tf.concat(1, [r_q * q_glimpse, r_d * d_glimpse]), tf.squeeze(infer_state))
-            return d_attention
+            return tf.to_float(tf.sign(docs)) * tf.squeeze(d_attention)
 
     def batch_fit(self, docs, queries, answers, learning_rate=1e-3, run_options=None, run_metadata=None):
         """
