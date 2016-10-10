@@ -72,10 +72,10 @@ class AlternatingAttention(object):
         Adds tensorflow placeholders for inputs to the model: documents, queries, answers.
         keep_prob and learning_rate are hyperparameters that we might like to adjust while training.
         """
-        batch_size, doc_len, query_len = self._batch_size, self._doc_len, self._query_len
         self._docs = tf.placeholder(tf.int32, [self._batch_size, self._doc_len])
         self._queries = tf.placeholder(tf.int32, [self._batch_size, self._query_len])
         self._answers = tf.placeholder(tf.int32, [self._batch_size])
+
         self._keep_prob = tf.placeholder(tf.float32)
         self._learning_rate = tf.placeholder(tf.float32)
 
@@ -91,7 +91,7 @@ class AlternatingAttention(object):
             self._g_q = tf.get_variable("g_q", [self._batch_size, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
             self._g_d = tf.get_variable("g_d", [self._batch_size, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
 
-    def _embed(self, sequence, seq_len):
+    def _embed(self, sequence):
         """
         performs embedding lookups for every word in the sequence
         """
@@ -99,7 +99,7 @@ class AlternatingAttention(object):
             embedded = tf.nn.embedding_lookup(self._embeddings, sequence)
             return embedded
 
-    def _bidirectional_encode(self, sequence, seq_len, size):
+    def _bidirectional_encode(self, sequence, seq_lens, size):
         """
         Encodes sequence with two GRUs, one forward, one backward, and returns the concatenation
         """
@@ -108,17 +108,22 @@ class AlternatingAttention(object):
                 fw_encode = tf.nn.rnn_cell.GRUCell(size)
                 fw_state = tf.get_variable("gru_state", [self._batch_size, fw_encode.state_size], initializer=orthogonal_initializer())
                 output_fw, output_state_fw = tf.nn.dynamic_rnn(
-                    cell=fw_encode, inputs=sequence, initial_state=fw_state, scope=fw_scope, swap_memory=True)
+                    cell=fw_encode, inputs=sequence,
+                    initial_state=fw_state, scope=fw_scope,
+                    sequence_lengths=seq_lens, swap_memory=True)
+
             with tf.variable_scope("_BW") as bw_scope:
                 bw_encode = tf.nn.rnn_cell.GRUCell(size)
                 bw_state = tf.get_variable("gru_state", [self._batch_size, bw_encode.state_size], initializer=orthogonal_initializer())
                 inputs_reverse = tf.reverse_sequence(
-                    input=sequence, seq_lengths=seq_len,
+                    input=sequence, seq_lengths=seq_lens,
                     seq_dim=1, batch_dim=0)
                 tmp, output_state_bw = tf.nn.dynamic_rnn(
-                    cell=bw_encode, inputs=inputs_reverse, sequence_length=seq_len, initial_state = bw_state, scope=bw_scope, swap_memory=True)
+                    cell=bw_encode, inputs=inputs_reverse,
+                    sequence_lengths=seq_len, initial_state = bw_state,
+                    scope=bw_scope, swap_memory=True)
                 output_bw = tf.reverse_sequence(
-                  input=tmp, seq_lengths=seq_len,
+                  input=tmp, seq_lengths=seq_lens,
                   seq_dim=1, batch_dim=0)
 
             outputs = (output_fw, output_bw)
@@ -144,13 +149,20 @@ class AlternatingAttention(object):
         Computes document attentions given a document batch and query batch.
         """
         with tf.variable_scope(self._name):
+            # Compute document lengths / query lengths for batch
+            doc_lens = tf.argmin(docs, 1)
+            doc_seq_mask = tf.sequence_mask(doc_lens, self._doc_len)
+
+            query_lens = tf.argmin(docs, 1)
+            query_seq_mask = tf.sequence_mask(query_lens, self._query_len)
+
             # Encode Document / Query
             with tf.variable_scope('docs'):
-                encoded_docs = tf.nn.dropout(self._embed(docs, self._doc_len), self._keep_prob)
-                encoded_docs = self._bidirectional_encode(encoded_docs, self._batch_size * [self._doc_len], self._encode_size)
+                encoded_docs = tf.nn.dropout(self._embed(docs), self._keep_prob)
+                encoded_docs = self._bidirectional_encode(encoded_docs, doc_lens, self._encode_size)
             with tf.variable_scope('queries'):
-                encoded_queries = tf.nn.dropout(self._embed(queries, self._query_len), self._keep_prob)
-                encoded_queries = self._bidirectional_encode(encoded_queries, self._batch_size * [self._query_len], self._encode_size)
+                encoded_queries = tf.nn.dropout(self._embed(queries), self._keep_prob)
+                encoded_queries = self._bidirectional_encode(encoded_queries, query_lens, self._encode_size)
 
             with tf.variable_scope('attend') as scope:
                 infer_gru = tf.nn.rnn_cell.GRUCell(self._infer_size)
@@ -179,7 +191,13 @@ class AlternatingAttention(object):
         """
         Perform a batch training iteration
         """
-        feed_dict = { self._docs: docs, self._queries: queries, self._answers: answers, self._keep_prob: 0.8, self._learning_rate: learning_rate}
+        feed_dict = {
+            self._docs: docs,
+            self._queries: queries,
+            self._answers: answers,
+            self._keep_prob: 0.8,
+            self._learning_rate: learning_rate
+            }
         loss, summary, _, step = self._sess.run([self._loss_op, self._summary_op, self._train_op, self._global_step], feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
         return loss, summary, step
 
@@ -187,7 +205,12 @@ class AlternatingAttention(object):
         """
         Perform batch prediction. Computes accuracy of batch predictions.
         """
-        feed_dict = { self._docs: docs, self._queries: queries, self._answers: answers, self._keep_prob: 1. }
+        feed_dict = {
+            self._docs: docs,
+            self._queries: queries,
+            self._answers: answers,
+            self._keep_prob: 1.
+            }
         loss, summary, attentions = self._sess.run([self._loss_op, self._summary_op, self._doc_attentions], feed_dict=feed_dict)
         correct = 0.
         for i in range(docs.shape[0]):
