@@ -48,7 +48,13 @@ class AlternatingAttention(object):
 
         # Answer probability
         doc_attentions = self._inference(self._docs, self._queries)
-        P_a = tf.pack([tf.reduce_sum(tf.gather(doc_attentions[i, :], tf.where(tf.equal(a, self._docs[i, :])))) for i, a in enumerate(tf.unpack(self._answers))])
+        P_a = tf.pack([
+            tf.reduce_sum(
+                tf.gather(
+                    doc_attentions[i, :],
+                    tf.where(tf.equal(a, self._docs[i, :]))))
+                for i, a in enumerate(tf.unpack(self._answers))])
+
         loss_op = -tf.reduce_mean(tf.log(tf.clip_by_value(P_a,1e-10,1.0)))
         self._loss_op = loss_op
         tf.scalar_summary('loss', loss_op)
@@ -196,9 +202,13 @@ class AlternatingAttention(object):
             self._answers: answers,
             self._keep_prob: 0.8,
             self._learning_rate: learning_rate
-            }
-        loss, summary, _, step = self._sess.run([self._loss_op, self._summary_op, self._train_op, self._global_step], feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
-        return loss, summary, step
+        }
+
+        loss, summary, _, step, attentions = self._sess.run(
+                [self._loss_op, self._summary_op, self._train_op, self._global_step, self._doc_attentions],
+                feed_dict=feed_dict, options=run_options, run_metadata=run_metadata)
+
+        return loss, summary, step, attentions
 
     def batch_predict(self, docs, queries, answers):
         """
@@ -209,15 +219,9 @@ class AlternatingAttention(object):
             self._queries: queries,
             self._answers: answers,
             self._keep_prob: 1.
-            }
-        loss, summary, attentions = self._sess.run([self._loss_op, self._summary_op, self._doc_attentions], feed_dict=feed_dict)
-        correct = 0.
-        for i in range(docs.shape[0]):
-            words = np.asarray(list(set(docs[i,:])))
-            accuracies = np.zeros(words.shape)
-            for j,w in enumerate(words):
-                accuracy = np.sum(attentions[i, docs[i,:] == w])
-                accuracies[j] = accuracy
-            if words[np.argmax(accuracies)] == answers[i]:
-                correct += 1
-        return loss, summary, correct / docs.shape[0]
+        }
+        loss, summary, attentions = self._sess.run(
+                [self._loss_op, self._summary_op, self._doc_attentions],
+                feed_dict=feed_dict)
+
+        return loss, summary, attentions

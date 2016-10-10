@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import os
 import time
+from collections import defaultdict
 
 from load_data import load_data
 from model import AlternatingAttention
@@ -52,6 +53,17 @@ def get_batch(X, Q, Y, batch_size):
         end = start + batch_size
         yield (X[start:end], Q[start:end], Y[start:end])
 
+def compute_accuracy(docs, probabilities, labels):
+    correct_count = 0
+    for doc in range(docs.shape[0]):
+        probs = defaultdict(int)
+        for idx, word in enumerate(docs[doc,:]):
+            probs[word] += probabilities[doc, idx]
+        guess = max(probs, key=probs.get)
+        if guess == labels[doc]:
+            correct_count += 1
+    return correct_count / docs.shape[0]
+
 # Train Model
 with tf.Session() as sess:
     model = AlternatingAttention(FLAGS.batch_size, vocab_size, doc_len, query_len, FLAGS.encoding_dim, FLAGS.embedding_dim, FLAGS.num_glimpses, session=sess)
@@ -90,20 +102,22 @@ with tf.Session() as sess:
     for epoch in range(FLAGS.num_epochs):
         # Train over epoch
         for X, Q, Y in get_batch(X_train, Q_train, Y_train, FLAGS.batch_size):
-            batch_loss, summary, step = model.batch_fit(X, Q, Y, learning_rate)
+            batch_loss, summary, step, attentions = model.batch_fit(X, Q, Y, learning_rate)
             train_writer.add_summary(summary, step)
-
+            train_accuracy = compute_accuracy(X, attentions, Y)
+            print('Train batch accuracy: {}'.format(train_accuracy))
             if step % FLAGS.evaluate_every == 0:
                 batch = random_batch(X_test, Q_test, Y_test, FLAGS.batch_size)
-                valid_loss, summary, accuracy = model.batch_predict(*batch)
-                if step % half_epoch == 0: # this will only happen if half_epoch is a multiple of evaluate_every so kinda hacky
-                    if accuracy <= last_accuracy:
-                        print("No improvement in accuracy... decaying learning rate from {} to {}", learning_rate, learning_rate * FLAGS.learning_rate_decay)
-                        learning_rate *= FLAGS.learning_rate_decay
+                test_loss, summary, attentions = model.batch_predict(*batch)
+                accuracy = compute_accuracy(batch[0], attentions, batch[2])
                 last_accuracy = accuracy
                 test_writer.add_summary(summary, step)
-                print('Step {} - (train_loss, valid_loss): ({}, {})'.format(step, batch_loss, valid_loss))
+                print('Step {} - (train_loss, valid_loss): ({}, {})'.format(step, batch_loss, test_loss))
                 print('Step {} - Accuracy: {}'.format(step, accuracy))
+            if step % half_epoch == 0:
+                if accuracy <= last_accuracy:
+                    learning_rate = learning_rate * FLAGS.learning_rate_decay
+                    print("decaying learning rate to {}", learning_rate)
 
             if step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=step)
@@ -113,6 +127,7 @@ with tf.Session() as sess:
         batch_num = 0
         loss_sum = 0
         accuracy_sum = 0
+
         for X, Q, Y in get_batch(X_test, Q_test, Y_test, FLAGS.batch_size):
             batch_num += 1
             batch_loss, summary, accuracy = model.batch_predict(X, Q, Y)
