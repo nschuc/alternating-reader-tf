@@ -5,6 +5,7 @@ from functools import reduce
 import itertools
 import re
 import h5py
+import pickle
 
 data_path = 'data/'
 data_filenames = {
@@ -12,7 +13,7 @@ data_filenames = {
         'test'  : 'CBTest/data/cbtest_NE_test_2500ex.txt',
         'valid' : 'CBTest/data/cbtest_NE_valid_2000ex.txt'
         }
-preprocessed = 'processed.h5'
+vocab_file = os.path.join(data_path, 'vocab.h5')
 
 def tokenize(sentence):
     return [s.strip() for s in re.split('(\W+)+', sentence) if s.strip()]
@@ -85,10 +86,11 @@ def pad_sequences(sequences, maxlen=None, dtype='int32',
     return x
 
 
-def vectorize_stories(data, word_idx, story_maxlen, query_maxlen):
+def vectorize_stories(data, word_idx):
     X = []
     Xq = []
     Y = []
+
     for s, q, a in data:
         x = [word_idx[w] for w in s]
         xq = [word_idx[w] for w in q]
@@ -96,10 +98,25 @@ def vectorize_stories(data, word_idx, story_maxlen, query_maxlen):
         X.append(x)
         Xq.append(xq)
         Y.append(word_idx[a])
-    return (pad_sequences(X, maxlen=story_maxlen),
-            pad_sequences(Xq, maxlen=query_maxlen),
-            np.array(Y))
 
+    X = pad_sequences(X)
+    Q = pad_sequences(Xq)
+    return (X, Q, np.array(Y))
+
+def build_vocab():
+    if os.path.isfile(vocab_file):
+        word_idx = pickle.load( open( vocab_file, "rb" ) )
+    else:
+        stories = []
+        for key, filename in data_filenames.items():
+            stories = stories + get_stories(open(os.path.join(data_path, filename)))
+
+        vocab = sorted(set(itertools.chain(*(story + q + [answer] for story, q, answer in stories))))
+        vocab_size = len(vocab) + 1
+        print('Vocab size:', vocab_size)
+        word_idx = dict((w, i + 1) for i,w in enumerate(vocab))
+        pickle.dump( word_idx, open( vocab_file, "wb" ) )
+    return word_idx
 
 def load_data(dataset='train', debug=False):
     filename = os.path.join(data_path, data_filenames[dataset])
@@ -113,18 +130,9 @@ def load_data(dataset='train', debug=False):
     else:
         stories = get_stories(open(filename))
 
-        vocab = sorted(set(itertools.chain(*(story + q + [answer] for story, q, answer in stories))))
+        word_idx = build_vocab()
 
-        print(len(vocab))
-        vocab_size = len(vocab) + 1
-        story_maxlen = max(map(len, (x for x, _, _ in stories)))
-        query_maxlen = max(map(len, (x for _, x, _ in stories)))
-
-        print('Vocab size:', vocab_size)
-        print('{} instances:'.format(dataset), len(stories))
-
-        word_idx = dict((w, i + 1) for i,w in enumerate(vocab))
-        X, Q, Y= vectorize_stories(stories, word_idx, story_maxlen, query_maxlen)
+        X, Q, Y = vectorize_stories(stories, word_idx)
 
         h5f = h5py.File(filename + '.h5', 'w')
         h5f.create_dataset('X', data=X)
