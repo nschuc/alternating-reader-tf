@@ -17,8 +17,8 @@ tf.flags.DEFINE_float("learning_rate_decay", 0.8, "How much learning rate will d
 # Training parameters
 tf.flags.DEFINE_integer("batch_size", 32, "Batch Size (default: 32)")
 tf.flags.DEFINE_integer("num_epochs", 12, "Number of training epochs (default: 12)")
-tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on validation set after this many steps (default: 100)")
-tf.flags.DEFINE_integer("checkpoint_every", 10000, "Save model after this many steps (default: 10000)")
+tf.flags.DEFINE_integer("evaluate_every", 300, "Evaluate model on validation set after this many steps (default: 100)")
+tf.flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many steps (default: 10000)")
 
 tf.flags.DEFINE_boolean("debug", False, "Debug (load smaller dataset)")
 tf.flags.DEFINE_boolean("trace", False, "Whether to generate a debug trace of training step")
