@@ -16,6 +16,8 @@ def orthogonal_initializer(scale = 1.1):
         return tf.constant(scale * q[:shape[0], :shape[1]], dtype=tf.float32)
     return _initializer
 
+def length(sequence):
+    return tf.reduce_sum(tf.sign(tf.abs(sequence)), 1)
 
 class AlternatingAttention(object):
     """Iterative Alternating Attention Network"""
@@ -158,8 +160,8 @@ class AlternatingAttention(object):
         """
         with tf.variable_scope(self._name):
             # Compute document lengths / query lengths for batch
-            doc_lens = tf.to_int32(tf.argmin(docs, 1))
-            query_lens = tf.to_int32(tf.argmin(queries, 1))
+            doc_lens = length(docs)
+            query_lens = length(queries)
 
             # Encode Document / Query
             with tf.variable_scope('docs'):
@@ -190,7 +192,7 @@ class AlternatingAttention(object):
                     tf.nn.dropout(r_q, self._keep_prob)
 
                     _, infer_state = infer_gru(tf.concat(1, [r_q * q_glimpse, r_d * d_glimpse]), tf.squeeze(infer_state))
-            return tf.to_float(tf.sign(docs)) * tf.squeeze(d_attention)
+            return tf.to_float(tf.sign(tf.abs(docs))) * tf.squeeze(d_attention)
 
     def batch_fit(self, docs, queries, answers, learning_rate=1e-3, run_options=None, run_metadata=None):
         """

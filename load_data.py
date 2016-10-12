@@ -45,7 +45,7 @@ def get_stories(story_file):
 
 # From keras.preprocessing: https://github.com/fchollet/keras/blob/master/keras/preprocessing/sequence.py
 def pad_sequences(sequences, maxlen=None, dtype='int32',
-                  padding='pre', truncating='pre', value=0.):
+                  padding='post', truncating='post', value=0.):
     lengths = [len(s) for s in sequences]
 
     nb_samples = len(sequences)
@@ -86,7 +86,7 @@ def pad_sequences(sequences, maxlen=None, dtype='int32',
     return x
 
 
-def vectorize_stories(data, word_idx):
+def vectorize_stories(data, word_idx, doc_max_len, query_max_len):
     X = []
     Xq = []
     Y = []
@@ -99,24 +99,28 @@ def vectorize_stories(data, word_idx):
         Xq.append(xq)
         Y.append(word_idx[a])
 
-    X = pad_sequences(X)
-    Q = pad_sequences(Xq)
+    X = pad_sequences(X, maxlen=doc_max_len)
+    Q = pad_sequences(Xq, maxlen=query_max_len)
     return (X, Q, np.array(Y))
 
 def build_vocab():
     if os.path.isfile(vocab_file):
-        word_idx = pickle.load( open( vocab_file, "rb" ) )
+        (word_idx, doc_length, query_length) = pickle.load( open( vocab_file, "rb" ) )
     else:
         stories = []
         for key, filename in data_filenames.items():
             stories = stories + get_stories(open(os.path.join(data_path, filename)))
 
+        doc_length = max([len(s) for s, _, _ in stories])
+        query_length = max([len(q) for _, q, _ in stories])
+
+        print('Document Length: {}, Query Length: {}'.format(doc_length, query_length))
         vocab = sorted(set(itertools.chain(*(story + q + [answer] for story, q, answer in stories))))
         vocab_size = len(vocab) + 1
         print('Vocab size:', vocab_size)
         word_idx = dict((w, i + 1) for i,w in enumerate(vocab))
-        pickle.dump( word_idx, open( vocab_file, "wb" ) )
-    return word_idx
+        pickle.dump( (word_idx, doc_length, query_length), open( vocab_file, "wb" ) )
+    return (word_idx, doc_length, query_length)
 
 def load_data(dataset='train', debug=False):
     filename = os.path.join(data_path, data_filenames[dataset])
@@ -130,10 +134,9 @@ def load_data(dataset='train', debug=False):
     else:
         stories = get_stories(open(filename))
 
-        word_idx = build_vocab()
+        word_idx, doc_length, query_length = build_vocab()
 
-        X, Q, Y = vectorize_stories(stories, word_idx)
-
+        X, Q, Y = vectorize_stories(stories, word_idx, doc_length, query_length)
         h5f = h5py.File(filename + '.h5', 'w')
         h5f.create_dataset('X', data=X)
         h5f.create_dataset('Q', data=Q)
