@@ -3,6 +3,7 @@ import tensorflow as tf
 import os
 import time
 from collections import defaultdict
+from datetime import datetime
 
 from load_data import load_data
 from model import AlternatingAttention
@@ -24,6 +25,7 @@ tf.flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many st
 tf.flags.DEFINE_boolean("debug", False, "Debug (load smaller dataset)")
 tf.flags.DEFINE_boolean("trace", False, "Whether to generate a debug trace of training step")
 tf.flags.DEFINE_string("trace_file", "timeline.ctf.json", "Chrome tracefile name for debugging model (default: timeline.ctf.json)")
+tf.flags.DEFINE_string("log_dir", "logs", "Directory for summary logs to be written to default (./logs/)")
 
 FLAGS = tf.flags.FLAGS
 FLAGS._parse_flags()
@@ -76,8 +78,11 @@ with tf.Session() as sess:
         os.makedirs(checkpoint_dir)
     saver = tf.train.Saver(tf.all_variables())
 
-    train_writer = tf.train.SummaryWriter('/tmp/logs/train', sess.graph, flush_secs=25)
-    test_writer = tf.train.SummaryWriter('/tmp/logs/test', flush_secs=25)
+    FLAGS.log_dir = os.path.join(FLAGS.log_dir, str(datetime.utcnow()))
+    if not os.path.exists(FLAGS.log_dir):
+        os.makedirs(FLAGS.log_dir)
+    train_writer = tf.train.SummaryWriter(os.path.join(FLAGS.log_dir, 'train'), sess.graph)
+    test_writer = tf.train.SummaryWriter(os.path.join(FLAGS.log_dir, 'test'))
 
     half_epoch = len(X_train) / 2.
     learning_rate = FLAGS.learning_rate
@@ -91,7 +96,6 @@ with tf.Session() as sess:
         run_metadata = tf.RunMetadata()
         for X, Q, Y in get_batch(X_train, Q_train, Y_train, FLAGS.batch_size):
             model.batch_fit(X, Q, Y, learning_rate, run_options=run_options, run_metadata=run_metadata)
-            print(X, Q, Y)
             break
         trace = timeline.Timeline(step_stats=run_metadata.step_stats)
         print('Writing tracefile to {}'.format(FLAGS.trace_file))
