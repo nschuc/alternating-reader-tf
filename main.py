@@ -66,6 +66,21 @@ def compute_accuracy(docs, probabilities, labels):
             correct_count += 1
     return correct_count / docs.shape[0]
 
+def run_epoch(model, X, Q, Y):
+    batch_num = 0
+    total_loss = 0
+    total_accuracy = 0
+
+    for x, q, y in get_batch(X, Q, Y, FLAGS.batch_size):
+        batch_loss, summary, attentions =  model.batch_predict(x, q, y)
+        total_accuracy += compute_accuracy(x, attentions, y)
+        total_loss += batch_loss
+        batch_num += 1
+    total_accuracy /= batch_num
+    total_loss /= batch_num
+    return total_loss, total_accuracy
+
+
 # Train Model
 with tf.Session() as sess:
     model = AlternatingAttention(FLAGS.batch_size, vocab_size, doc_len, query_len, FLAGS.encoding_dim, FLAGS.embedding_dim, FLAGS.num_glimpses, session=sess)
@@ -103,38 +118,31 @@ with tf.Session() as sess:
         trace_file.write(trace.generate_chrome_trace_format(show_dataflow=False))
         print('Done Trace')
 
+    valid_acc = 0
     for epoch in range(FLAGS.num_epochs):
         # Train over epoch
         for X, Q, Y in get_batch(X_train, Q_train, Y_train, FLAGS.batch_size):
             batch_loss, summary, step, attentions = model.batch_fit(X, Q, Y, learning_rate)
             train_writer.add_summary(summary, step)
             train_accuracy = compute_accuracy(X, attentions, Y)
-            print('Train batch accuracy: {}'.format(train_accuracy))
+            print('Step {}: Train batch (loss, acc): ({},{})'.format(step, batch_loss, train_accuracy))
             if step % FLAGS.evaluate_every == 0:
                 batch = random_batch(X_test, Q_test, Y_test, FLAGS.batch_size)
                 test_loss, summary, attentions = model.batch_predict(*batch)
                 accuracy = compute_accuracy(batch[0], attentions, batch[2])
                 last_accuracy = accuracy
                 test_writer.add_summary(summary, step)
-                print('Step {} - (train_loss, valid_loss): ({}, {})'.format(step, batch_loss, test_loss))
-                print('Step {} - Accuracy: {}'.format(step, accuracy))
+                print('Step {}: Test batch (loss, acc): ({},{})'.format(step, test_loss, accuracy))
             if step % half_epoch == 0:
-                if accuracy <= last_accuracy:
+                # Validation loss after epoch
+                valid_loss, new_valid_acc = run_epoch(model, X_test, Q_test, Y_test)
+                if new_valid_acc >= valid_acc:
                     learning_rate = learning_rate * FLAGS.learning_rate_decay
-                    print("decaying learning rate to {}", learning_rate)
+                    print("Decaying learning rate to", learning_rate)
+                valid_acc = new_valid_acc
+                print('Epoch {} - validation loss: {}, accuracy: {}'.format(epoch, valid_loss, valid_acc))
 
             if step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=step)
                 print("Saved model checkpoint to {}\n".format(path))
 
-        # Validation loss after epoch
-        batch_num = 0
-        loss_sum = 0
-        accuracy_sum = 0
-
-        for X, Q, Y in get_batch(X_test, Q_test, Y_test, FLAGS.batch_size):
-            batch_num += 1
-            batch_loss, summary, accuracy = model.batch_predict(X, Q, Y)
-            loss_sum += batch_loss
-            accuracy_sum += accuracy
-        print('Epoch {} - validation loss: {}, accuracy: {}'.format(epoch, loss_sum / batch_num,  accuracy_sum / batch_num))

@@ -59,7 +59,6 @@ class AlternatingAttention(object):
 
         loss_op = -tf.reduce_mean(tf.log(tf.clip_by_value(P_a,1e-10,1.0)))
         self._loss_op = loss_op
-        tf.scalar_summary('loss', loss_op)
 
         self._doc_attentions = doc_attentions
 
@@ -71,6 +70,9 @@ class AlternatingAttention(object):
             self._global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), dtype=tf.int32, trainable=False)
             self._train_op = self._opt.apply_gradients(grads_and_vars, global_step=self._global_step)
 
+        tf.scalar_summary('loss', self._loss_op)
+        tf.scalar_summary('learning_rate', self._learning_rate)
+        tf.histogram_summary('attentions', self._doc_attentions)
         self._summary_op = tf.merge_all_summaries()
 
         self._sess.run(tf.initialize_all_variables())
@@ -80,12 +82,12 @@ class AlternatingAttention(object):
         Adds tensorflow placeholders for inputs to the model: documents, queries, answers.
         keep_prob and learning_rate are hyperparameters that we might like to adjust while training.
         """
-        self._docs = tf.placeholder(tf.int32, [self._batch_size, self._doc_len])
-        self._queries = tf.placeholder(tf.int32, [self._batch_size, self._query_len])
-        self._answers = tf.placeholder(tf.int32, [self._batch_size])
+        self._docs = tf.placeholder(tf.int32, [self._batch_size, self._doc_len], name="docs")
+        self._queries = tf.placeholder(tf.int32, [self._batch_size, self._query_len], name="queries")
+        self._answers = tf.placeholder(tf.int32, [self._batch_size], name="answers")
 
-        self._keep_prob = tf.placeholder(tf.float32)
-        self._learning_rate = tf.placeholder(tf.float32)
+        self._keep_prob = tf.placeholder(tf.float32, name="keep_prob")
+        self._learning_rate = tf.placeholder(tf.float32, name="learning_rate")
 
     def _build_variables(self):
         with tf.variable_scope(self._name, initializer=tf.random_normal_initializer(mean=0.0, stddev=0.22, dtype=tf.float32)):
@@ -220,7 +222,8 @@ class AlternatingAttention(object):
             self._docs: docs,
             self._queries: queries,
             self._answers: answers,
-            self._keep_prob: 1.
+            self._keep_prob: 1.,
+            self._learning_rate: 0.
         }
         loss, summary, attentions = self._sess.run(
                 [self._loss_op, self._summary_op, self._doc_attentions],
