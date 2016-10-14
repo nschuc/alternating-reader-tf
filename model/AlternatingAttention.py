@@ -67,7 +67,6 @@ class AlternatingAttention(object):
             self._opt = tf.train.AdamOptimizer(learning_rate=self._learning_rate)
             grads_and_vars = self._opt.compute_gradients(loss_op)
             capped_grads_and_vars = [(tf.clip_by_norm(g, grad_norm_clip), v) for g,v in grads_and_vars]
-            self._global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), dtype=tf.int32, trainable=False)
             self._train_op = self._opt.apply_gradients(grads_and_vars, global_step=self._global_step)
 
         tf.scalar_summary('loss', self._loss_op)
@@ -101,6 +100,11 @@ class AlternatingAttention(object):
             self._g_q = tf.get_variable("g_q", [self._batch_size, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
             self._g_d = tf.get_variable("g_d", [self._batch_size, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
 
+            self._global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), dtype=tf.int32, trainable=False)
+
+            self._encode_state_fw = tf.get_variable("gru_state_fw", [self._batch_size, self._encode_size], initializer=orthogonal_initializer())
+            self._encode_state_bw = tf.get_variable("gru_state_bw", [self._batch_size, self._encode_size], initializer=orthogonal_initializer())
+
     def _embed(self, sequence):
         """
         performs embedding lookups for every word in the sequence
@@ -114,31 +118,10 @@ class AlternatingAttention(object):
         Encodes sequence with two GRUs, one forward, one backward, and returns the concatenation
         """
         with tf.variable_scope('encode'):
-            with tf.variable_scope("_FW") as fw_scope:
-                fw_encode = tf.nn.rnn_cell.GRUCell(size)
-                fw_state = tf.get_variable("gru_state", [self._batch_size, fw_encode.state_size],
-                        initializer=orthogonal_initializer())
-                output_fw, output_state_fw = tf.nn.dynamic_rnn(
-                    cell=fw_encode, inputs=sequence,
-                    initial_state=fw_state, scope=fw_scope,
-                    sequence_length=seq_lens, swap_memory=True)
-
-            with tf.variable_scope("_BW") as bw_scope:
-                bw_encode = tf.nn.rnn_cell.GRUCell(size)
-                bw_state = tf.get_variable("gru_state", [self._batch_size, bw_encode.state_size],
-                        initializer=orthogonal_initializer())
-                inputs_reverse = tf.reverse_sequence(
-                    input=sequence, seq_lengths=seq_lens,
-                    seq_dim=1, batch_dim=0)
-                tmp, output_state_bw = tf.nn.dynamic_rnn(
-                    cell=bw_encode, inputs=inputs_reverse,
-                    sequence_length=seq_lens, initial_state = bw_state,
-                    scope=bw_scope, swap_memory=True)
-                output_bw = tf.reverse_sequence(
-                  input=tmp, seq_lengths=seq_lens,
-                  seq_dim=1, batch_dim=0)
-
-            outputs = (output_fw, output_bw)
+            gru_cell = tf.nn.rnn_cell.GRUCell(size)
+            (outputs, output_states) = tf.nn.bidirectional_dynamic_rnn(gru_cell, gru_cell, sequence, sequence_length=seq_lens,
+                    initial_state_fw=self._encode_state_fw, initial_state_bw=self._encode_state_bw,
+                    swap_memory=True)
             encoded = tf.concat(2, outputs)
             return encoded
 
