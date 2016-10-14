@@ -85,7 +85,7 @@ def run_epoch(model, X, Q, Y):
 with tf.Session() as sess:
     model = AlternatingAttention(FLAGS.batch_size, vocab_size, doc_len, query_len, FLAGS.encoding_dim, FLAGS.embedding_dim, FLAGS.num_glimpses, session=sess)
 
-    timestamp = str(int(time.time()))
+    timestamp = str(datetime.now())
     out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))
     checkpoint_dir = os.path.abspath(os.path.join(out_dir, "checkpoints"))
     checkpoint_prefix = os.path.join(checkpoint_dir, "model")
@@ -93,7 +93,7 @@ with tf.Session() as sess:
         os.makedirs(checkpoint_dir)
     saver = tf.train.Saver(tf.all_variables())
 
-    FLAGS.log_dir = os.path.join(FLAGS.log_dir, str(datetime.utcnow()))
+    FLAGS.log_dir = os.path.join(FLAGS.log_dir, timestamp)
     if not os.path.exists(FLAGS.log_dir):
         os.makedirs(FLAGS.log_dir)
     train_writer = tf.train.SummaryWriter(os.path.join(FLAGS.log_dir, 'train'), sess.graph)
