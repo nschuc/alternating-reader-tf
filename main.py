@@ -99,7 +99,8 @@ with tf.Session() as sess:
     train_writer = tf.train.SummaryWriter(os.path.join(FLAGS.log_dir, 'train'), sess.graph)
     test_writer = tf.train.SummaryWriter(os.path.join(FLAGS.log_dir, 'test'))
 
-    half_epoch = len(X_train) / 2.
+    half_epoch = 500 * (len(X_train) / (2 * FLAGS.batch_size) // 500)
+    print('Half epoch', half_epoch)
     learning_rate = FLAGS.learning_rate
     last_accuracy = 0
 
