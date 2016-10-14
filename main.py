@@ -142,8 +142,5 @@ with tf.Session() as sess:
                     print("Decaying learning rate to", learning_rate)
                 valid_acc = new_valid_acc
                 print('Epoch {} - validation loss: {}, accuracy: {}'.format(epoch, valid_loss, valid_acc))
-
-            if step % FLAGS.checkpoint_every == 0:
-                path = saver.save(sess, checkpoint_prefix, global_step=step)
+                path = saver.save(sess, checkpoint_prefix + '_{:.3f}_{:.3f}'.format(valid_loss, valid_acc), global_step=step)
                 print("Saved model checkpoint to {}\n".format(path))
-
