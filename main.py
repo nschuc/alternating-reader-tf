@@ -2,11 +2,8 @@ import numpy as np
 import pprint
 import tensorflow as tf
 import os
-import time
-from datetime import datetime
-
 from train import run
-from load_data import load_data
+from data_helper import load_data
 from model import AlternatingAttention
 
 flags = tf.app.flags;

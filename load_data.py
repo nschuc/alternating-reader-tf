@@ -2,6 +2,7 @@ import tarfile
 import os
 import numpy as np
 from functools import reduce
+from datetime import datetime
 import itertools
 import re
 import h5py
@@ -120,7 +121,6 @@ def build_vocab():
         print('Vocab size:', vocab_size)
         word2idx = dict((w, i + 1) for i,w in enumerate(vocab))
         pickle.dump( (word2idx, doc_length, query_length), open( vocab_file, "wb" ) )
-
     return (word2idx, doc_length, query_length)
 
 def load_data(dataset='train', debug=False):
@@ -141,6 +141,7 @@ def load_data(dataset='train', debug=False):
         h5f = h5py.File(filename + '.h5', 'w')
         h5f.create_dataset('X', data=X)
         h5f.create_dataset('Q', data=Q)
+        h5f.create_dataset('Y', data=Y)
         h5f.create_dataset('Y', data=Y)
         h5f.close()
     return X, Q, Y
