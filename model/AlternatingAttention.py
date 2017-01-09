@@ -71,6 +71,8 @@ class AlternatingAttention(object):
 
         tf.summary.scalar('loss', self._loss_op)
         tf.summary.scalar('learning_rate', self._learning_rate)
+        tf.summary.scalar('avg_answer_prob', tf.reduce_mean(P_a))
+        tf.summary.scalar('max_prob', tf.reduce_max(doc_attentions))
         tf.summary.histogram('attentions', self._doc_attentions)
         self._summary_op = tf.summary.merge_all()
 

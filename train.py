@@ -15,7 +15,6 @@ def get_batch(X, Q, Y, batch_size):
         yield (X[start:end], Q[start:end], Y[start:end])
 
 def compute_accuracy(docs, probabilities, labels):
-    print(probabilities.max())
     correct_count = 0
     for doc in range(docs.shape[0]):
         probs = defaultdict(int)
