@@ -1,4 +1,5 @@
 import numpy as np
+import pprint
 import tensorflow as tf
 import os
 import time
@@ -29,11 +30,10 @@ flags.DEFINE_boolean("trace", False, "Whether to generate a debug trace of train
 flags.DEFINE_string("trace_file", "timeline.ctf.json", "Chrome tracefile name for debugging model (default: timeline.ctf.json)")
 flags.DEFINE_string("log_dir", "logs", "Directory for summary logs to be written to default (./logs/)")
 
-flags.FLAGS._parse_flags()
-print("\nParameters:")
-for attr, value in sorted(FLAGS.__flags.items()):
-    print("{}={}".format(attr.upper(), value))
-print("")
+FLAGS = tf.app.flags.FLAGS
+pp = pprint.PrettyPrinter()
+FLAGS._parse_flags()
+pp.pprint(FLAGS.__flags)
 
 # Load Data
 X_train, Q_train, Y_train = load_data('train', FLAGS.debug)
