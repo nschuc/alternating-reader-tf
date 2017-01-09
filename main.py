@@ -8,27 +8,28 @@ from datetime import datetime
 from load_data import load_data
 from model import AlternatingAttention
 
-tf.flags.DEFINE_integer("embedding_dim", 384, "Dimensionality of character embedding (default: 384)")
-tf.flags.DEFINE_integer("encoding_dim", 128, "Dimensionality of bidirectional GRU encoding for query / document")
-tf.flags.DEFINE_integer("num_glimpses", 8, "Number of glimpse iterations during read (default: 8)")
-tf.flags.DEFINE_float("dropout_keep_prob", 0.8, "Dropout keep probability (default: 0.8)")
-tf.flags.DEFINE_float("l2_reg_lambda", 1e-4, "L2 regularizaion lambda (default: 0.0001)")
-tf.flags.DEFINE_float("learning_rate", 1e-3, "AdamOptimizer learning rate (default: 0.001)")
-tf.flags.DEFINE_float("learning_rate_decay", 0.8, "How much learning rate will decay after half epoch of non-decreasing loss (default: 0.8)")
+flags = tf.app.flags;
+
+flags.DEFINE_integer("embedding_dim", 384, "Dimensionality of character embedding (default: 384)")
+flags.DEFINE_integer("encoding_dim", 128, "Dimensionality of bidirectional GRU encoding for query / document")
+flags.DEFINE_integer("num_glimpses", 8, "Number of glimpse iterations during read (default: 8)")
+flags.DEFINE_float("dropout_keep_prob", 0.8, "Dropout keep probability (default: 0.8)")
+flags.DEFINE_float("l2_reg_lambda", 1e-4, "L2 regularizaion lambda (default: 0.0001)")
+flags.DEFINE_float("learning_rate", 1e-3, "AdamOptimizer learning rate (default: 0.001)")
+flags.DEFINE_float("learning_rate_decay", 0.8, "How much learning rate will decay after half epoch of non-decreasing loss (default: 0.8)")
 
 # Training parameters
-tf.flags.DEFINE_integer("batch_size", 32, "Batch Size (default: 32)")
-tf.flags.DEFINE_integer("num_epochs", 12, "Number of training epochs (default: 12)")
-tf.flags.DEFINE_integer("evaluate_every", 300, "Evaluate model on validation set after this many steps (default: 100)")
-tf.flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many steps (default: 10000)")
+flags.DEFINE_integer("batch_size", 32, "Batch Size (default: 32)")
+flags.DEFINE_integer("num_epochs", 12, "Number of training epochs (default: 12)")
+flags.DEFINE_integer("evaluate_every", 300, "Evaluate model on validation set after this many steps (default: 100)")
+flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many steps (default: 10000)")
 
-tf.flags.DEFINE_boolean("debug", False, "Debug (load smaller dataset)")
-tf.flags.DEFINE_boolean("trace", False, "Whether to generate a debug trace of training step")
-tf.flags.DEFINE_string("trace_file", "timeline.ctf.json", "Chrome tracefile name for debugging model (default: timeline.ctf.json)")
-tf.flags.DEFINE_string("log_dir", "logs", "Directory for summary logs to be written to default (./logs/)")
+flags.DEFINE_boolean("debug", False, "Debug (load smaller dataset)")
+flags.DEFINE_boolean("trace", False, "Whether to generate a debug trace of training step")
+flags.DEFINE_string("trace_file", "timeline.ctf.json", "Chrome tracefile name for debugging model (default: timeline.ctf.json)")
+flags.DEFINE_string("log_dir", "logs", "Directory for summary logs to be written to default (./logs/)")
 
-FLAGS = tf.flags.FLAGS
-FLAGS._parse_flags()
+flags.FLAGS._parse_flags()
 print("\nParameters:")
 for attr, value in sorted(FLAGS.__flags.items()):
     print("{}={}".format(attr.upper(), value))
