@@ -26,8 +26,6 @@ flags.DEFINE_integer("evaluate_every", 300, "Evaluate model on validation set af
 flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many steps (default: 10000)")
 
 flags.DEFINE_boolean("debug", False, "Debug (load smaller dataset)")
-flags.DEFINE_boolean("trace", False, "Whether to generate a debug trace of training step")
-flags.DEFINE_string("trace_file", "timeline.ctf.json", "Chrome tracefile name for debugging model (default: timeline.ctf.json)")
 flags.DEFINE_string("log_dir", "logs", "Directory for summary logs to be written to default (./logs/)")
 
 FLAGS = tf.app.flags.FLAGS
@@ -104,22 +102,6 @@ with tf.Session() as sess:
     print('Half epoch', half_epoch)
     learning_rate = FLAGS.learning_rate
     last_accuracy = 0
-
-    # Perform debug trace and produce a tf Timeline for use in the chrome trace visualizer
-    if FLAGS.trace:
-        print('Performing full trace of model (for GPU trace libcupti.so must be on LD_LIBRARY_PATH. I found it in /usr/local/cuda/extras/CUPTI/lib64/)')
-        from tensorflow.python.client import timeline
-        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        run_metadata = tf.RunMetadata()
-        for X, Q, Y in get_batch(X_train, Q_train, Y_train, FLAGS.batch_size):
-            model.batch_fit(X, Q, Y, learning_rate, run_options=run_options, run_metadata=run_metadata)
-            break
-        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-        print('Writing tracefile to {}'.format(FLAGS.trace_file))
-        trace_file = open(FLAGS.trace_file, 'w')
-        trace_file.write(trace.generate_chrome_trace_format(show_dataflow=False))
-        print('Done Trace')
-
     valid_acc = 0
     for epoch in range(FLAGS.num_epochs):
         # Train over epoch
