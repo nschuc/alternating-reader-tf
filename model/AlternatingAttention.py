@@ -93,19 +93,17 @@ class AlternatingAttention(object):
     def _build_variables(self):
         with tf.variable_scope(self._name, initializer=tf.random_normal_initializer(mean=0.0, stddev=0.22, dtype=tf.float32)):
             self._embeddings = tf.get_variable("embeddings", [self._vocab_size, self._embedding_size], dtype=tf.float32)
-            self._A_q = tf.get_variable("A_q", [self._batch_size, 2*self._encode_size, self._infer_size], dtype=tf.float32)
-            self._a_q = tf.get_variable("a_q", [self._batch_size, 2*self._encode_size, 1], dtype=tf.float32)
+            self._A_q = tf.get_variable("A_q", [2*self._encode_size, self._infer_size], dtype=tf.float32)
+            self._a_q = tf.get_variable("a_q", [2*self._encode_size, 1], dtype=tf.float32)
 
-            self._A_d = tf.get_variable("A_d", [self._batch_size, 2*self._encode_size, self._infer_size + 2*self._encode_size], dtype=tf.float32)
-            self._a_d = tf.get_variable("a_d", [self._batch_size, 2*self._encode_size, 1], dtype=tf.float32)
+            self._A_d = tf.get_variable("A_d", [2*self._encode_size, self._infer_size + 2*self._encode_size], dtype=tf.float32)
+            self._a_d = tf.get_variable("a_d", [2*self._encode_size, 1], dtype=tf.float32)
 
-            self._g_q = tf.get_variable("g_q", [self._batch_size, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
-            self._g_d = tf.get_variable("g_d", [self._batch_size, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
+            self._g_q = tf.get_variable("g_q", [1, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
+            self._g_d = tf.get_variable("g_d", [1, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
 
             self._global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), dtype=tf.int32, trainable=False)
 
-            self._encode_state_fw = tf.get_variable("gru_state_fw", [self._batch_size, self._encode_size], initializer=orthogonal_initializer())
-            self._encode_state_bw = tf.get_variable("gru_state_bw", [self._batch_size, self._encode_size], initializer=orthogonal_initializer())
 
     def _embed(self, sequence):
         """
@@ -121,8 +119,12 @@ class AlternatingAttention(object):
         """
         with tf.variable_scope('encode'):
             gru_cell = tf.nn.rnn_cell.GRUCell(size)
-            (outputs, output_states) = tf.nn.bidirectional_dynamic_rnn(gru_cell, gru_cell, sequence, sequence_length=seq_lens,
-                    initial_state_fw=self._encode_state_fw, initial_state_bw=self._encode_state_bw,
+            batch_size = tf.shape(sequence)[0]
+            encode_state_fw = gru_cell.zero_state(batch_size, tf.float32)
+            encode_state_bw = gru_cell.zero_state(batch_size, tf.float32)
+            (outputs, output_states) = tf.nn.bidirectional_dynamic_rnn(
+                    gru_cell, gru_cell, sequence, sequence_length=seq_lens,
+                    initial_state_fw=encode_state_fw, initial_state_bw=encode_state_bw,
                     swap_memory=True)
             encoded = tf.concat(2, outputs)
             return encoded
@@ -149,6 +151,7 @@ class AlternatingAttention(object):
             # Compute document lengths / query lengths for batch
             doc_lens = length(docs)
             query_lens = length(queries)
+            batch_size = tf.shape(docs)[0]
 
             # Encode Document / Query
             with tf.variable_scope('docs'):
@@ -160,7 +163,7 @@ class AlternatingAttention(object):
 
             with tf.variable_scope('attend') as scope:
                 infer_gru = tf.nn.rnn_cell.GRUCell(self._infer_size)
-                infer_state = infer_gru.zero_state(self._batch_size, tf.float32)
+                infer_state = infer_gru.zero_state(batch_size, tf.float32)
                 for iter_step in range(self._num_glimpses):
                     if iter_step > 0:
                         scope.reuse_variables()
@@ -178,7 +181,9 @@ class AlternatingAttention(object):
                     r_q = tf.sigmoid(tf.squeeze(tf.batch_matmul(gate_concat, self._g_q)))
                     tf.nn.dropout(r_q, self._keep_prob)
 
-                    _, infer_state = infer_gru(tf.concat(1, [r_q * q_glimpse, r_d * d_glimpse]), tf.squeeze(infer_state))
+                    combined_gated_glimpse = tf.concat(1, [r_q * q_glimpse, r_d * d_glimpse])
+                    print(infer_state.get_shape())
+                    _, infer_state = infer_gru(combined_gated_glimpse, tf.squeeze(infer_state))
             return tf.to_float(tf.sign(tf.abs(docs))) * tf.squeeze(d_attention)
 
     def batch_fit(self, docs, queries, answers, learning_rate=1e-3, run_options=None, run_metadata=None):
