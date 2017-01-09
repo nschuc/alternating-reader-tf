@@ -3,6 +3,7 @@ from datetime import datetime
 import os
 from collections import defaultdict
 import numpy as np
+from tqdm import *
 
 def random_batch(X, Q, Y, batch_size):
     indices = np.random.choice(len(X) - len(X) % batch_size, batch_size)
@@ -14,6 +15,7 @@ def get_batch(X, Q, Y, batch_size):
         yield (X[start:end], Q[start:end], Y[start:end])
 
 def compute_accuracy(docs, probabilities, labels):
+    print(probabilities.max())
     correct_count = 0
     for doc in range(docs.shape[0]):
         probs = defaultdict(int)
@@ -62,13 +64,16 @@ def run(config, sess, model, train_data, test_data):
     valid_acc = 0
     half_epoch = 500 * (len(X_train) / (2 * config.batch_size) // 500)
 
+    num_batches = len(X_train) - len(X_train) % config.batch_size
     for epoch in range(config.num_epochs):
-        # Train over epoch
-        for X, Q, Y in get_batch(X_train, Q_train, Y_train, config.batch_size):
+        for start in tqdm(range(0, num_batches, config.batch_size)):
+            end = start + config.batch_size
+            X, Q, Y = (X_train[start:end], Q_train[start:end], Y_train[start:end])
+
             batch_loss, summary, step, attentions = model.batch_fit(X, Q, Y, learning_rate)
             train_writer.add_summary(summary, step)
             train_accuracy = compute_accuracy(X, attentions, Y)
-            print('Step {}: Train batch (loss, acc): ({},{})'.format(step, batch_loss, train_accuracy))
+            #print('Step {}: Train batch (loss, acc): ({},{})'.format(step, batch_loss, train_accuracy))
             if step % config.evaluate_every == 0:
                 batch = random_batch(X_test, Q_test, Y_test, config.batch_size)
                 test_loss, summary, attentions = model.batch_predict(*batch)
