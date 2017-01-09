@@ -92,13 +92,13 @@ with tf.Session() as sess:
     checkpoint_prefix = os.path.join(checkpoint_dir, "model")
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
-    saver = tf.train.Saver(tf.all_variables())
+    saver = tf.train.Saver(tf.global_variables())
 
     FLAGS.log_dir = os.path.join(FLAGS.log_dir, timestamp)
     if not os.path.exists(FLAGS.log_dir):
         os.makedirs(FLAGS.log_dir)
-    train_writer = tf.train.SummaryWriter(os.path.join(FLAGS.log_dir, 'train'), sess.graph)
-    test_writer = tf.train.SummaryWriter(os.path.join(FLAGS.log_dir, 'test'))
+    train_writer = tf.summary.FileWriter(os.path.join(FLAGS.log_dir, 'train'), sess.graph)
+    test_writer = tf.summary.FileWriter(os.path.join(FLAGS.log_dir, 'test'))
 
     half_epoch = 500 * (len(X_train) / (2 * FLAGS.batch_size) // 500)
     print('Half epoch', half_epoch)

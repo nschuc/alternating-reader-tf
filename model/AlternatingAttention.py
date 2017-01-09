@@ -69,12 +69,12 @@ class AlternatingAttention(object):
             capped_grads_and_vars = [(tf.clip_by_norm(g, grad_norm_clip), v) for g,v in grads_and_vars]
             self._train_op = self._opt.apply_gradients(grads_and_vars, global_step=self._global_step)
 
-        tf.scalar_summary('loss', self._loss_op)
-        tf.scalar_summary('learning_rate', self._learning_rate)
-        tf.histogram_summary('attentions', self._doc_attentions)
-        self._summary_op = tf.merge_all_summaries()
+        tf.summary.scalar('loss', self._loss_op)
+        tf.summary.scalar('learning_rate', self._learning_rate)
+        tf.summary.histogram('attentions', self._doc_attentions)
+        self._summary_op = tf.summary.merge_all()
 
-        self._sess.run(tf.initialize_all_variables())
+        self._sess.run(tf.global_variables_initializer())
 
     def _build_placeholders(self):
         """
