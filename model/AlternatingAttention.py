@@ -50,27 +50,26 @@ class AlternatingAttention(object):
 
         # Answer probability
         doc_attentions = self._inference(self._docs, self._queries)
-
-        masked_attentions = tf.to_float(tf.equal(tf.expand_dims(self._answers, -1), self._docs)) * doc_attentions
-        P_a = tf.reduce_sum(masked_attentions, 1)
-
-        loss_op = -tf.reduce_mean(tf.log(tf.clip_by_value(P_a,1e-10,1.0)))
-        self._loss_op = loss_op
+        nans =  tf.reduce_sum(tf.to_float(tf.is_nan(doc_attentions)))
 
         self._doc_attentions = doc_attentions
+        ans_mask = tf.to_float(tf.equal(tf.expand_dims(self._answers, -1), self._docs))
+        P_a = tf.reduce_sum(ans_mask * tf.nn.softmax(doc_attentions), 1)
+        loss_op = -tf.reduce_mean(tf.log(P_a + tf.constant(0.00001)))
+        self._loss_op = loss_op
 
         # Optimizer and gradients
-        with tf.variable_scope("optimizer"):
+        with tf.name_scope("optimizer"):
             self._opt = tf.train.AdamOptimizer(learning_rate=self._learning_rate)
             grads_and_vars = self._opt.compute_gradients(loss_op)
             capped_grads_and_vars = [(tf.clip_by_norm(g, grad_norm_clip), v) for g,v in grads_and_vars]
-            self._train_op = self._opt.apply_gradients(grads_and_vars, global_step=self._global_step)
+            self._train_op = self._opt.apply_gradients(capped_grads_and_vars, global_step=self._global_step)
 
         tf.summary.scalar('loss', self._loss_op)
         tf.summary.scalar('learning_rate', self._learning_rate)
-        tf.summary.scalar('avg_answer_prob', tf.reduce_mean(P_a))
-        tf.summary.scalar('max_prob', tf.reduce_max(doc_attentions))
-        tf.summary.histogram('attentions', self._doc_attentions)
+        tf.summary.scalar('num_ans_mentions', tf.reduce_mean(tf.reduce_sum(ans_mask, 1)))
+        tf.summary.histogram('attentions', doc_attentions)
+        tf.summary.histogram('P(a|d,q)', P_a)
         self._summary_op = tf.summary.merge_all()
 
         self._sess.run(tf.global_variables_initializer())
@@ -88,7 +87,7 @@ class AlternatingAttention(object):
         self._learning_rate = tf.placeholder(tf.float32, name="learning_rate")
 
     def _build_variables(self):
-        with tf.variable_scope(self._name, initializer=tf.random_normal_initializer(mean=0.0, stddev=0.22, dtype=tf.float32)):
+        with tf.variable_scope("variables", initializer=tf.random_normal_initializer(mean=0.0, stddev=0.22, dtype=tf.float32)):
             self._embeddings = tf.get_variable("embeddings", [self._vocab_size, self._embedding_size], dtype=tf.float32)
             self._A_q = tf.get_variable("A_q", [2*self._encode_size, self._infer_size], dtype=tf.float32)
             self._a_q = tf.get_variable("a_q", [2*self._encode_size, 1], dtype=tf.float32)
@@ -114,15 +113,12 @@ class AlternatingAttention(object):
         """
         Encodes sequence with two GRUs, one forward, one backward, and returns the concatenation
         """
-        with tf.variable_scope('encode'):
+        with tf.name_scope('encode'):
             gru_cell = tf.nn.rnn_cell.GRUCell(size)
             batch_size = tf.shape(sequence)[0]
-            encode_state_fw = gru_cell.zero_state(batch_size, tf.float32)
-            encode_state_bw = gru_cell.zero_state(batch_size, tf.float32)
             (outputs, output_states) = tf.nn.bidirectional_dynamic_rnn(
                     gru_cell, gru_cell, sequence, sequence_length=seq_lens,
-                    initial_state_fw=encode_state_fw, initial_state_bw=encode_state_bw,
-                    swap_memory=True)
+                    dtype=tf.float32, swap_memory=True)
             encoded = tf.concat(2, outputs)
             return encoded
 
@@ -144,20 +140,20 @@ class AlternatingAttention(object):
         """
         Computes document attentions given a document batch and query batch.
         """
-        with tf.variable_scope(self._name):
+        with tf.name_scope("inference"):
             # Compute document lengths / query lengths for batch
             doc_lens = length(docs)
             query_lens = length(queries)
             batch_size = tf.shape(docs)[0]
 
-            # Encode Document / Query
-            with tf.variable_scope('docs'):
-                encoded_docs = tf.nn.dropout(self._embed(docs), self._keep_prob)
-                encoded_docs = self._bidirectional_encode(encoded_docs, doc_lens, self._encode_size)
-            with tf.variable_scope('queries'):
-                encoded_queries = tf.nn.dropout(self._embed(queries), self._keep_prob)
-                encoded_queries = self._bidirectional_encode(encoded_queries, query_lens, self._encode_size)
-
+            with tf.variable_scope('encode'):
+                # Encode Document / Query
+                with tf.variable_scope('docs'):
+                    encoded_docs = tf.nn.dropout(self._embed(docs), self._keep_prob)
+                    encoded_docs = self._bidirectional_encode(encoded_docs, doc_lens, self._encode_size)
+                with tf.variable_scope('queries'):
+                    encoded_queries = tf.nn.dropout(self._embed(queries), self._keep_prob)
+                    encoded_queries = self._bidirectional_encode(encoded_queries, query_lens, self._encode_size)
 
             with tf.variable_scope('attend') as scope:
                 infer_gru = tf.nn.rnn_cell.GRUCell(self._infer_size)
