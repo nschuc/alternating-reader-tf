@@ -133,8 +133,8 @@ class AlternatingAttention(object):
 
         Returns attention weights and computed glimpse
         """
-        tf.nn.dropout(weights, self._keep_prob)
-        tf.nn.dropout(inputs, self._keep_prob)
+        weights = tf.nn.dropout(weights, self._keep_prob)
+        inputs = tf.nn.dropout(inputs, self._keep_prob)
         attention = tf.transpose(tf.matmul(weights, tf.transpose(inputs)) + bias)
         attention = tf.batch_matmul(encodings, tf.expand_dims(attention, -1))
         attention = tf.nn.softmax(attention)
@@ -168,7 +168,6 @@ class AlternatingAttention(object):
 
                     # Glimpse query and document
                     _, q_glimpse = self._glimpse(self._A_q, self._a_q, encoded_queries, infer_state)
-                    #print(infer_state.get_shape(), q_glimpse.get_shape())
                     d_attention, d_glimpse = self._glimpse(self._A_d, self._a_d, encoded_docs, tf.concat_v2([infer_state, q_glimpse], 1))
 
                     # Search Gates
@@ -176,9 +175,9 @@ class AlternatingAttention(object):
                     gate_concat = tf.concat_v2([infer_state, q_glimpse, d_glimpse, q_glimpse * d_glimpse], 1)
 
                     r_d = tf.sigmoid(tf.matmul(gate_concat, self._g_d))
-                    tf.nn.dropout(r_d, self._keep_prob)
+                    r_d = tf.nn.dropout(r_d, self._keep_prob)
                     r_q = tf.sigmoid(tf.matmul(gate_concat, self._g_q))
-                    tf.nn.dropout(r_q, self._keep_prob)
+                    r_q = tf.nn.dropout(r_q, self._keep_prob)
 
                     combined_gated_glimpse = tf.concat_v2([r_q * q_glimpse, r_d * d_glimpse], 1)
                     _, infer_state = infer_gru(combined_gated_glimpse, infer_state)
