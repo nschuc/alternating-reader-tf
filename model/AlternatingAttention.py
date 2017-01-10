@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-
+from tensorflow.python.client import timeline
 
 def orthogonal_initializer(scale = 1.1):
     def _initializer(shape, dtype=tf.float32, partition_info=None):

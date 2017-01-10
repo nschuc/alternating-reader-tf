@@ -69,8 +69,17 @@ def run(config, sess, model, train_data, test_data):
             end = start + config.batch_size
             X, Q, Y = (X_train[start:end], Q_train[start:end], Y_train[start:end])
 
-            batch_loss, summary, step, attentions = model.batch_fit(X, Q, Y, learning_rate)
+            run_options = run_metadata = None
+            if config.debug:
+                run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+                run_metadata = tf.RunMetadata()
+
+            batch_loss, summary, step, attentions = model.batch_fit(
+                    X, Q, Y, learning_rate, run_options, run_metadata)
+
             train_writer.add_summary(summary, step)
+            if config.debug:
+                train_writer.add_run_metadata(run_metadata, 'step%d' % step)
             train_accuracy = compute_accuracy(X, attentions, Y)
             #print('Step {}: Train batch (loss, acc): ({},{})'.format(step, batch_loss, train_accuracy))
             if step % config.evaluate_every == 0:
