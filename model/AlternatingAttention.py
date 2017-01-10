@@ -50,12 +50,9 @@ class AlternatingAttention(object):
 
         # Answer probability
         doc_attentions = self._inference(self._docs, self._queries)
-        P_a = tf.pack([
-            tf.reduce_sum(
-                tf.gather(
-                    doc_attentions[i, :],
-                    tf.where(tf.equal(a, self._docs[i, :]))))
-                for i, a in enumerate(tf.unpack(self._answers))])
+
+        masked_attentions = tf.to_float(tf.equal(tf.expand_dims(self._answers, -1), self._docs)) * doc_attentions
+        P_a = tf.reduce_sum(masked_attentions, 1)
 
         loss_op = -tf.reduce_mean(tf.log(tf.clip_by_value(P_a,1e-10,1.0)))
         self._loss_op = loss_op
@@ -83,9 +80,9 @@ class AlternatingAttention(object):
         Adds tensorflow placeholders for inputs to the model: documents, queries, answers.
         keep_prob and learning_rate are hyperparameters that we might like to adjust while training.
         """
-        self._docs = tf.placeholder(tf.int32, [self._batch_size, self._doc_len], name="docs")
-        self._queries = tf.placeholder(tf.int32, [self._batch_size, self._query_len], name="queries")
-        self._answers = tf.placeholder(tf.int32, [self._batch_size], name="answers")
+        self._docs = tf.placeholder(tf.int32, [None, self._doc_len], name="docs")
+        self._queries = tf.placeholder(tf.int32, [None, self._query_len], name="queries")
+        self._answers = tf.placeholder(tf.int32, [None], name="answers")
 
         self._keep_prob = tf.placeholder(tf.float32, name="keep_prob")
         self._learning_rate = tf.placeholder(tf.float32, name="learning_rate")
@@ -99,8 +96,8 @@ class AlternatingAttention(object):
             self._A_d = tf.get_variable("A_d", [2*self._encode_size, self._infer_size + 2*self._encode_size], dtype=tf.float32)
             self._a_d = tf.get_variable("a_d", [2*self._encode_size, 1], dtype=tf.float32)
 
-            self._g_q = tf.get_variable("g_q", [1, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
-            self._g_d = tf.get_variable("g_d", [1, self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
+            self._g_q = tf.get_variable("g_q", [self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
+            self._g_d = tf.get_variable("g_d", [self._infer_size + 6 * self._encode_size, 2 * self._encode_size])
 
             self._global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), dtype=tf.int32, trainable=False)
 
@@ -138,9 +135,9 @@ class AlternatingAttention(object):
         """
         tf.nn.dropout(weights, self._keep_prob)
         tf.nn.dropout(inputs, self._keep_prob)
-        attention = tf.batch_matmul(weights, inputs) + bias
-        attention = tf.squeeze(tf.batch_matmul(encodings, attention))
-        attention = tf.expand_dims(tf.nn.softmax(attention), -1)
+        attention = tf.transpose(tf.matmul(weights, tf.transpose(inputs)) + bias)
+        attention = tf.batch_matmul(encodings, tf.expand_dims(attention, -1))
+        attention = tf.nn.softmax(attention)
         return attention, tf.reduce_sum(attention * encodings, 1)
 
     def _inference(self, docs, queries):
@@ -161,6 +158,7 @@ class AlternatingAttention(object):
                 encoded_queries = tf.nn.dropout(self._embed(queries), self._keep_prob)
                 encoded_queries = self._bidirectional_encode(encoded_queries, query_lens, self._encode_size)
 
+
             with tf.variable_scope('attend') as scope:
                 infer_gru = tf.nn.rnn_cell.GRUCell(self._infer_size)
                 infer_state = infer_gru.zero_state(batch_size, tf.float32)
@@ -169,22 +167,22 @@ class AlternatingAttention(object):
                         scope.reuse_variables()
 
                     # Glimpse query and document
-                    _, q_glimpse = self._glimpse(self._A_q, self._a_q, encoded_queries, tf.expand_dims(infer_state, -1))
-                    d_attention, d_glimpse = self._glimpse(self._A_d, self._a_d, encoded_docs, tf.concat(1, [tf.expand_dims(infer_state, -1), tf.expand_dims(q_glimpse, -1)]))
+                    _, q_glimpse = self._glimpse(self._A_q, self._a_q, encoded_queries, infer_state)
+                    #print(infer_state.get_shape(), q_glimpse.get_shape())
+                    d_attention, d_glimpse = self._glimpse(self._A_d, self._a_d, encoded_docs, tf.concat_v2([infer_state, q_glimpse], 1))
 
                     # Search Gates
-                    gate_concat = tf.concat(1, [tf.squeeze(infer_state), q_glimpse, d_glimpse, q_glimpse * d_glimpse])
-                    gate_concat = tf.expand_dims(gate_concat, 1)
 
-                    r_d = tf.sigmoid(tf.squeeze(tf.batch_matmul(gate_concat, self._g_d)))
+                    gate_concat = tf.concat_v2([infer_state, q_glimpse, d_glimpse, q_glimpse * d_glimpse], 1)
+
+                    r_d = tf.sigmoid(tf.matmul(gate_concat, self._g_d))
                     tf.nn.dropout(r_d, self._keep_prob)
-                    r_q = tf.sigmoid(tf.squeeze(tf.batch_matmul(gate_concat, self._g_q)))
+                    r_q = tf.sigmoid(tf.matmul(gate_concat, self._g_q))
                     tf.nn.dropout(r_q, self._keep_prob)
 
-                    combined_gated_glimpse = tf.concat(1, [r_q * q_glimpse, r_d * d_glimpse])
-                    print(infer_state.get_shape())
-                    _, infer_state = infer_gru(combined_gated_glimpse, tf.squeeze(infer_state))
-            return tf.to_float(tf.sign(tf.abs(docs))) * tf.squeeze(d_attention)
+                    combined_gated_glimpse = tf.concat_v2([r_q * q_glimpse, r_d * d_glimpse], 1)
+                    _, infer_state = infer_gru(combined_gated_glimpse, infer_state)
+            return tf.to_float(tf.sign(tf.abs(docs))) * tf.reshape(d_attention, [-1, self._doc_len])
 
     def batch_fit(self, docs, queries, answers, learning_rate=1e-3, run_options=None, run_metadata=None):
         """
