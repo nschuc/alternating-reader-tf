@@ -32,7 +32,7 @@ pp.pprint(FLAGS.__flags)
 
 # Load Data
 X_train, Q_train, Y_train = load_data('train', FLAGS.debug)
-X_test, Q_test, Y_test = load_data('test', FLAGS.debug)
+X_test, Q_test, Y_test = load_data('valid', FLAGS.debug)
 
 vocab_size = np.max(X_train) + 1
 doc_len = len(X_train[0])

@@ -148,10 +148,10 @@ class AlternatingAttention(object):
 
             with tf.variable_scope('encode'):
                 # Encode Document / Query
-                with tf.variable_scope('docs'):
+                with tf.variable_scope('docs'), tf.device('/gpu:0'):
                     encoded_docs = tf.nn.dropout(self._embed(docs), self._keep_prob)
                     encoded_docs = self._bidirectional_encode(encoded_docs, doc_lens, self._encode_size)
-                with tf.variable_scope('queries'):
+                with tf.variable_scope('queries'), tf.device('/gpu:1'):
                     encoded_queries = tf.nn.dropout(self._embed(queries), self._keep_prob)
                     encoded_queries = self._bidirectional_encode(encoded_queries, query_lens, self._encode_size)
 
@@ -163,8 +163,10 @@ class AlternatingAttention(object):
                         scope.reuse_variables()
 
                     # Glimpse query and document
-                    _, q_glimpse = self._glimpse(self._A_q, self._a_q, encoded_queries, infer_state)
-                    d_attention, d_glimpse = self._glimpse(self._A_d, self._a_d, encoded_docs, tf.concat_v2([infer_state, q_glimpse], 1))
+                    with tf.device('/gpu:0'):
+                        _, q_glimpse = self._glimpse(self._A_q, self._a_q, encoded_queries, infer_state)
+                    with tf.device('/gpu:1'):
+                        d_attention, d_glimpse = self._glimpse(self._A_d, self._a_d, encoded_docs, tf.concat_v2([infer_state, q_glimpse], 1))
 
                     # Search Gates
 
