@@ -54,7 +54,7 @@ class AlternatingAttention(object):
 
         self._doc_attentions = doc_attentions
         ans_mask = tf.to_float(tf.equal(tf.expand_dims(self._answers, -1), self._docs))
-        P_a = tf.reduce_sum(ans_mask * tf.nn.softmax(doc_attentions), 1)
+        P_a = tf.reduce_sum(ans_mask * doc_attentions, 1)
         loss_op = -tf.reduce_mean(tf.log(P_a + tf.constant(0.00001)))
         self._loss_op = loss_op
 
@@ -67,9 +67,7 @@ class AlternatingAttention(object):
 
         tf.summary.scalar('loss', self._loss_op)
         tf.summary.scalar('learning_rate', self._learning_rate)
-        tf.summary.scalar('num_ans_mentions', tf.reduce_mean(tf.reduce_sum(ans_mask, 1)))
-        tf.summary.histogram('attentions', doc_attentions)
-        tf.summary.histogram('P(a|d,q)', P_a)
+        tf.summary.histogram('answer_probability', P_a)
         self._summary_op = tf.summary.merge_all()
 
         self._sess.run(tf.global_variables_initializer())
@@ -133,8 +131,8 @@ class AlternatingAttention(object):
         inputs = tf.nn.dropout(inputs, self._keep_prob)
         attention = tf.transpose(tf.matmul(weights, tf.transpose(inputs)) + bias)
         attention = tf.batch_matmul(encodings, tf.expand_dims(attention, -1))
-        attention = tf.nn.softmax(attention)
-        return attention, tf.reduce_sum(attention * encodings, 1)
+        attention = tf.nn.softmax(tf.squeeze(attention, -1))
+        return attention, tf.reduce_sum(tf.expand_dims(attention, -1) * encodings, 1)
 
     def _inference(self, docs, queries):
         """
@@ -167,7 +165,6 @@ class AlternatingAttention(object):
                         _, q_glimpse = self._glimpse(self._A_q, self._a_q, encoded_queries, infer_state)
                     with tf.device('/gpu:1'):
                         d_attention, d_glimpse = self._glimpse(self._A_d, self._a_d, encoded_docs, tf.concat_v2([infer_state, q_glimpse], 1))
-
                     # Search Gates
 
                     gate_concat = tf.concat_v2([infer_state, q_glimpse, d_glimpse, q_glimpse * d_glimpse], 1)
@@ -179,6 +176,7 @@ class AlternatingAttention(object):
 
                     combined_gated_glimpse = tf.concat_v2([r_q * q_glimpse, r_d * d_glimpse], 1)
                     _, infer_state = infer_gru(combined_gated_glimpse, infer_state)
+
             return tf.to_float(tf.sign(tf.abs(docs))) * tf.reshape(d_attention, [-1, self._doc_len])
 
     def batch_fit(self, docs, queries, answers, learning_rate=1e-3, run_options=None, run_metadata=None):
