@@ -21,7 +21,7 @@ def length(sequence):
 
 class AlternatingAttention(object):
     """Iterative Alternating Attention Network"""
-    def __init__(self, batch_size, vocab_size, document_size, query_size, encoding_size, embedding_size,
+    def __init__(self, batch_size, vocab_size, encoding_size, embedding_size,
                     num_glimpses = 8,
                     grad_norm_clip = 5.,
                     l2_reg_coef=1e-4,
@@ -32,8 +32,6 @@ class AlternatingAttention(object):
         """
         self._batch_size = batch_size
         self._vocab_size = vocab_size
-        self._doc_len = document_size
-        self._query_len = query_size
         self._encode_size = encoding_size
         self._infer_size = 4 * encoding_size
         self._embedding_size = embedding_size
@@ -77,8 +75,8 @@ class AlternatingAttention(object):
         Adds tensorflow placeholders for inputs to the model: documents, queries, answers.
         keep_prob and learning_rate are hyperparameters that we might like to adjust while training.
         """
-        self._docs = tf.placeholder(tf.int32, [None, self._doc_len], name="docs")
-        self._queries = tf.placeholder(tf.int32, [None, self._query_len], name="queries")
+        self._docs = tf.placeholder(tf.int32, [None, None], name="docs")
+        self._queries = tf.placeholder(tf.int32, [None, None], name="queries")
         self._answers = tf.placeholder(tf.int32, [None], name="answers")
 
         self._keep_prob = tf.placeholder(tf.float32, name="keep_prob")
@@ -177,7 +175,7 @@ class AlternatingAttention(object):
                     combined_gated_glimpse = tf.concat_v2([r_q * q_glimpse, r_d * d_glimpse], 1)
                     _, infer_state = infer_gru(combined_gated_glimpse, infer_state)
 
-            return tf.to_float(tf.sign(tf.abs(docs))) * tf.reshape(d_attention, [-1, self._doc_len])
+            return tf.to_float(tf.sign(tf.abs(docs))) * d_attention
 
     def batch_fit(self, docs, queries, answers, learning_rate=1e-3, run_options=None, run_metadata=None):
         """

@@ -1,8 +1,7 @@
 import tensorflow as tf
-from datetime import datetime
-import os
 from collections import defaultdict
 import numpy as np
+import os
 from tqdm import *
 
 def random_batch(X, Q, Y, batch_size):
@@ -43,17 +42,6 @@ def run(config, sess, model, train_data, test_data):
     X_train, Q_train, Y_train = train_data
     X_test, Q_test, Y_test = test_data
 
-    timestamp = str(datetime.now())
-    out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))
-    checkpoint_dir = os.path.abspath(os.path.join(out_dir, "checkpoints"))
-    checkpoint_prefix = os.path.join(checkpoint_dir, "model")
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
-
-    config.log_dir = os.path.join(config.log_dir, timestamp)
-    if not os.path.exists(config.log_dir):
-        os.makedirs(config.log_dir)
-
     train_writer = tf.summary.FileWriter(os.path.join(config.log_dir, 'train'), sess.graph)
     test_writer = tf.summary.FileWriter(os.path.join(config.log_dir, 'test'))
 
@@ -70,7 +58,7 @@ def run(config, sess, model, train_data, test_data):
             X, Q, Y = (X_train[start:end], Q_train[start:end], Y_train[start:end])
 
             run_options = run_metadata = None
-            if config.debug:
+            if config.trace:
                 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                 run_metadata = tf.RunMetadata()
 
@@ -78,25 +66,24 @@ def run(config, sess, model, train_data, test_data):
                     X, Q, Y, learning_rate, run_options, run_metadata)
 
             train_writer.add_summary(summary, step)
-            if config.debug:
+            if config.trace:
                 train_writer.add_run_metadata(run_metadata, 'step%d' % step)
-            train_accuracy = compute_accuracy(X, attentions, Y)
-            #print('Step {}: Train batch (loss, acc): ({},{})'.format(step, batch_loss, train_accuracy))
+                from tensorflow.python.client import timeline
+                tl = timeline.Timeline(run_metadata.step_stats)
+                ctf = tl.generate_chrome_trace_format()
+                with open('timeline.json', 'w') as f:
+                    f.write(ctf)
+                return
             if step % config.evaluate_every == 0:
                 batch = random_batch(X_test, Q_test, Y_test, config.batch_size)
                 test_loss, summary, attentions = model.batch_predict(*batch)
                 accuracy = compute_accuracy(batch[0], attentions, batch[2])
                 last_accuracy = accuracy
                 test_writer.add_summary(summary, step)
-                print('Step {}: Test batch (loss, acc): ({},{})'.format(step, test_loss, accuracy))
-            if step % half_epoch == 0:
-                # Validation loss after epoch
+            if step % half_epoch == 0: # Compute loss over validation set
                 valid_loss, new_valid_acc = run_epoch(model, X_test, Q_test, Y_test)
                 if new_valid_acc >= valid_acc:
                     learning_rate = learning_rate * config.learning_rate_decay
-                    print("Decaying learning rate to", learning_rate)
                 valid_acc = new_valid_acc
-                print('Epoch {} - validation loss: {}, accuracy: {}'.format(epoch, valid_loss, valid_acc))
                 path = saver.save(sess, checkpoint_prefix + '_{:.3f}_{:.3f}'.format(valid_loss, valid_acc), global_step=step)
-                print("Saved model checkpoint to {}\n".format(path))
 
