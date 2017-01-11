@@ -24,7 +24,7 @@ def compute_accuracy(docs, probabilities, labels):
             correct_count += 1
     return correct_count / docs.shape[0]
 
-def run_epoch(model, X, Q, Y):
+def run_epoch(config, model, X, Q, Y):
     batch_num = 0
     total_loss = 0
     total_accuracy = 0
@@ -78,19 +78,20 @@ def run(config, sess, model, train_data, test_data, saver=None):
                     X, Q, Y, learning_rate)
             train_writer.add_summary(summary, step)
             if step % config.evaluate_every == 0:
+                print('[!] Running batch on validation set for evaluation')
                 X, Q, Y = random_batch(X_test, Q_test, Y_test, config.batch_size)
                 test_loss, summary, attentions = model.batch_predict(X, Q, Y)
-                accuracy = compute_accuracy(batch[0], attentions, batch[2])
+                accuracy = compute_accuracy(X, attentions, Y)
                 last_accuracy = accuracy
                 test_writer.add_summary(summary, step)
             if step % config.checkpoint_every == 0:
                 print('[!] Running epoch on validation set for checkpoint')
-                loss, acc = run_epoch(model, X_test, Q_test, Y_test)
+                loss, acc = run_epoch(config, model, X_test, Q_test, Y_test)
                 ckpt_file = 'model-l{:.3f}_a{:.3f}.ckpt'.format(loss, acc)
                 path = saver.save(sess, os.path.join(config.ckpt_dir, ckpt_file), global_step=step)
                 print('[!] Saved checkpoint to %s' % path)
             if step % half_epoch == 0: # Compute loss over validation set
-                valid_loss, new_valid_acc = run_epoch(model, X_test, Q_test, Y_test)
+                valid_loss, new_valid_acc = run_epoch(config, model, X_test, Q_test, Y_test)
                 if new_valid_acc >= valid_acc:
                     learning_rate = learning_rate * config.learning_rate_decay
                 valid_acc = new_valid_acc
