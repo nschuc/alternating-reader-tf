@@ -22,7 +22,7 @@ flags.DEFINE_integer("num_epochs", 12, "Number of training epochs (default: 12)"
 flags.DEFINE_integer("evaluate_every", 300, "Evaluate model on validation set after this many steps (default: 300)")
 flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many steps (default: 10000)")
 
-flags.DEFINE_boolean("debug", False, "Debug (load smaller dataset)")
+flags.DEFINE_boolean("trace", False, "Trace (load smaller dataset)")
 flags.DEFINE_string("log_dir", "logs", "Directory for summary logs to be written to default (./logs/)")
 
 FLAGS = tf.app.flags.FLAGS
@@ -31,8 +31,8 @@ FLAGS._parse_flags()
 pp.pprint(FLAGS.__flags)
 
 # Load Data
-X_train, Q_train, Y_train = load_data('train', FLAGS.debug)
-X_test, Q_test, Y_test = load_data('valid', FLAGS.debug)
+X_train, Q_train, Y_train = load_data('train')
+X_test, Q_test, Y_test = load_data('valid')
 
 vocab_size = np.max(X_train) + 1
 doc_len = len(X_train[0])

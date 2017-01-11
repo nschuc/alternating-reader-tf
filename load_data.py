@@ -122,7 +122,7 @@ def build_vocab():
         pickle.dump( (word2idx, doc_length, query_length), open( vocab_file, "wb" ) )
     return (word2idx, doc_length, query_length)
 
-def load_data(dataset='train', debug=False):
+def load_data(dataset='train'):
     filename = os.path.join(data_path, data_filenames[dataset])
     # Check for preprocessed data and load that instead
     if os.path.isfile(filename + '.h5'):
