@@ -61,6 +61,10 @@ def main(_):
 
         saver = tf.train.Saver()
 
+        if config.restore_file is not None:
+            print('[!] Loading variables from checkpoint %s' % config.restore_file)
+            saver.restore(sess, config.restore_file)
+
         train.run(FLAGS, sess, model,
                 (X_train, Q_train, Y_train),
                 (X_test, Q_test, Y_test),

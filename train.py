@@ -65,10 +65,6 @@ def run(config, sess, model, train_data, test_data, saver=None):
     valid_acc = 0
     half_epoch = 500 * (len(X_train) / (2 * config.batch_size) // 500)
 
-    if config.restore_file is not None:
-        print('[!] Loading variables from checkpoint %s' % config.restore_file)
-        saver.restore(sess, config.restore_file)
-
     num_batches = len(X_train) - len(X_train) % config.batch_size
     for epoch in range(config.num_epochs):
         for start in tqdm(range(0, num_batches, config.batch_size)):
