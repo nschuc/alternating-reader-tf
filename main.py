@@ -3,9 +3,11 @@ import pprint
 import tensorflow as tf
 import os
 from datetime import datetime
-import train
 from data_helper import load_data
 from model import AlternatingAttention
+
+import train
+import test
 
 flags = tf.app.flags;
 
@@ -28,6 +30,8 @@ flags.DEFINE_string("log_dir", "logs", "Directory for summary logs to be written
 flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many steps (default: 1000)")
 flags.DEFINE_string("ckpt_dir", "ckpts", "Directory for checkpoints default (./ckpts/)")
 flags.DEFINE_string("restore_file", None, "Checkpoint to load")
+
+flags.DEFINE_boolean("evaluate", False, "Whether to run evaluation epoch on a checkpoint. Must have restore_file set.")
 
 def main(_):
     FLAGS = tf.app.flags.FLAGS
@@ -56,19 +60,27 @@ def main(_):
         model = AlternatingAttention(FLAGS.batch_size, vocab_size, FLAGS.encoding_dim, FLAGS.embedding_dim, FLAGS.num_glimpses, session=sess)
 
         if FLAGS.trace: # Trace model for debugging
-            train.trace(FLAGS< sess, model, (X_train, Q_train, Y_train))
+            train.trace(FLAGS, sess, model, (X_train, Q_train, Y_train))
             return
 
         saver = tf.train.Saver()
 
-        if config.restore_file is not None:
-            print('[!] Loading variables from checkpoint %s' % config.restore_file)
-            saver.restore(sess, config.restore_file)
+        if FLAGS.restore_file is not None:
+            print('[?] Loading variables from checkpoint %s' % FLAGS.restore_file)
+            saver.restore(sess, FLAGS.restore_file)
 
-        train.run(FLAGS, sess, model,
-                (X_train, Q_train, Y_train),
-                (X_test, Q_test, Y_test),
-                saver)
+        # Run evaluation
+        if FLAGS.evaluate:
+            if not FLAGS.restore_file:
+                print('Need to specify a restore_file checkpoint to evaluate')
+            else:
+                test_data = load_data('test')
+                test.run(FLAGS, sess, model, test_data)
+        else:
+            train.run(FLAGS, sess, model,
+                    (X_train, Q_train, Y_train),
+                    (X_test, Q_test, Y_test),
+                    saver)
 
 if __name__ == '__main__':
     tf.app.run()
