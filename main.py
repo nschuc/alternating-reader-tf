@@ -3,9 +3,9 @@ import pprint
 import tensorflow as tf
 import os
 from datetime import datetime
-from data_helper import load_data
-from model import AlternatingAttention
 
+from model import AlternatingAttention
+import data_helper
 import train
 import test
 
@@ -40,8 +40,8 @@ def main(_):
     pp.pprint(FLAGS.__flags)
 
     # Load Data
-    X_train, Q_train, Y_train = load_data('train')
-    X_test, Q_test, Y_test = load_data('valid')
+    X_train, Q_train, Y_train = data_helper.load_data('train')
+    X_test, Q_test, Y_test = data_helper.load_data('valid')
 
     vocab_size = np.max(X_train) + 1
     print('[?] Vocabulary Size:', vocab_size)
@@ -74,8 +74,9 @@ def main(_):
             if not FLAGS.restore_file:
                 print('Need to specify a restore_file checkpoint to evaluate')
             else:
-                test_data = load_data('test')
-                test.run(FLAGS, sess, model, test_data)
+                test_data = data_helper.load_data('test')
+                word2idx, _, _ = data_helper.build_vocab()
+                test.run(FLAGS, sess, model, test_data, word2idx)
         else:
             train.run(FLAGS, sess, model,
                     (X_train, Q_train, Y_train),
