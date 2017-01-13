@@ -208,13 +208,12 @@ class AlternatingAttention(object):
             self._keep_prob: 1.,
             self._learning_rate: 0.
         }
-        q_a, d_a = self._sess.run([
-            self._doc_attentions<
+        d_a, q_a = self._sess.run([
                     tf.get_collection('doc_attentions'),
                     tf.get_collection('query_attentions')
                     ], feed_dict=feed_dict)
 
-        return np.asarray(q_a), np.asarray(d_a)
+        return np.asarray(d_a), np.asarray(q_a)
 
     def batch_predict(self, docs, queries, answers):
         """

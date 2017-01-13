@@ -63,10 +63,9 @@ def run(config, sess, model, test_data, word2idx, print_samples=True):
             print('Answer: {}'.format(idx2string(idx2word,[y[0]])))
             print('Prediction: {}'.format(idx2string(idx2word, [guess])))
 
-            q_attentions, d_attentions = model.get_attentions(x[0:1], q[0:1], y[0:1])
-            print(q_attentions.shape, d_attentions.shape)
-            np.save('attentions/query_attentions_{}'.format(start), q_attentions)
-            np.save('attentions/doc_attentions_{}'.format(start), d_attentions)
+            d_attentions, q_attentions = model.get_attentions(x[0:1], q[0:1], y[0:1])
+            np.save('attentions/doc-{}'.format(start), d_attentions)
+            np.save('attentions/query-{}'.format(start), q_attentions)
 
         print('[!] batch loss: {}, Test accuracy: {}'.format(batch_loss, batch_accuracy))
 
