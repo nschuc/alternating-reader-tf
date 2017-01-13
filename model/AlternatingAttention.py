@@ -161,10 +161,10 @@ class AlternatingAttention(object):
                     # Glimpse query and document
                     with tf.device('/gpu:0'):
                         q_attention, q_glimpse = self._glimpse(self._A_q, self._a_q, encoded_queries, infer_state)
+                        tf.add_to_collection('query_attentions', q_attention)
                     with tf.device('/gpu:1'):
                         d_attention, d_glimpse = self._glimpse(self._A_d, self._a_d, encoded_docs, tf.concat_v2([infer_state, q_glimpse], 1))
                         tf.add_to_collection('doc_attentions', d_attention)
-                        tf.add_to_collection('query_attentions', q_attention)
                     # Search Gates
 
                     gate_concat = tf.concat_v2([infer_state, q_glimpse, d_glimpse, q_glimpse * d_glimpse], 1)
