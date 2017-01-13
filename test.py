@@ -52,15 +52,21 @@ def run(config, sess, model, test_data, word2idx, print_samples=True):
     for start in range(0, len(X) - len(X) % batch_size, batch_size):
         end = start + batch_size
         x, q, y = (X[start:end], Q[start:end], Y[start:end])
-        batch_loss, summary, attentions =  model.batch_predict(x, q, y)
+        batch_loss, summary, attentions = model.batch_predict(x, q, y)
         batch_accuracy = compute_accuracy(x, attentions, y)
 
         if print_samples:
+            print('Document ID: {}'.format(start))
             guess = max_probability(x[0], attentions[0])
             print('Document: {}'.format(idx2string(idx2word, x[0,:])))
             print('Query: {}'.format(idx2string(idx2word, q[0,:])))
             print('Answer: {}'.format(idx2string(idx2word,[y[0]])))
             print('Prediction: {}'.format(idx2string(idx2word, [guess])))
+
+            q_attentions, d_attentions = model.get_attentions(x[0:1], q[0:1], y[0:1])
+            print(q_attentions.shape, d_attentions.shape)
+            np.save('attentions/query_attentions_{}'.format(start), q_attentions)
+            np.save('attentions/doc_attentions_{}'.format(start), d_attentions)
 
         print('[!] batch loss: {}, Test accuracy: {}'.format(batch_loss, batch_accuracy))
 

@@ -160,9 +160,11 @@ class AlternatingAttention(object):
 
                     # Glimpse query and document
                     with tf.device('/gpu:0'):
-                        _, q_glimpse = self._glimpse(self._A_q, self._a_q, encoded_queries, infer_state)
+                        q_attention, q_glimpse = self._glimpse(self._A_q, self._a_q, encoded_queries, infer_state)
                     with tf.device('/gpu:1'):
                         d_attention, d_glimpse = self._glimpse(self._A_d, self._a_d, encoded_docs, tf.concat_v2([infer_state, q_glimpse], 1))
+                        tf.add_to_collection('doc_attentions', d_attention)
+                        tf.add_to_collection('query_attentions', q_attention)
                     # Search Gates
 
                     gate_concat = tf.concat_v2([infer_state, q_glimpse, d_glimpse, q_glimpse * d_glimpse], 1)
@@ -195,6 +197,25 @@ class AlternatingAttention(object):
 
         return loss, summary, step, attentions
 
+    def get_attentions(self, docs, queries, answers):
+        """
+        Gets the attention distributions for each alternating iteration.
+        """
+        feed_dict = {
+            self._docs: docs,
+            self._queries: queries,
+            self._answers: answers,
+            self._keep_prob: 1.,
+            self._learning_rate: 0.
+        }
+        q_a, d_a = self._sess.run([
+            self._doc_attentions<
+                    tf.get_collection('doc_attentions'),
+                    tf.get_collection('query_attentions')
+                    ], feed_dict=feed_dict)
+
+        return np.asarray(q_a), np.asarray(d_a)
+
     def batch_predict(self, docs, queries, answers):
         """
         Perform batch prediction. Computes accuracy of batch predictions.
@@ -207,7 +228,7 @@ class AlternatingAttention(object):
             self._learning_rate: 0.
         }
         loss, summary, attentions = self._sess.run(
-                [self._loss_op, self._summary_op, self._doc_attentions],
+                [self._loss_op, self._summary_op, self._doc_attentions ],
                 feed_dict=feed_dict)
 
         return loss, summary, attentions
