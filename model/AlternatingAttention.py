@@ -111,8 +111,7 @@ class AlternatingAttention(object):
         """
         with tf.name_scope('encode'):
             gru_cell = tf.nn.rnn_cell.GRUCell(size)
-            batch_size = tf.shape(sequence)[0]
-            (outputs, output_states) = tf.nn.bidirectional_dynamic_rnn(
+            outputs, _ = tf.nn.bidirectional_dynamic_rnn(
                     gru_cell, gru_cell, sequence, sequence_length=seq_lens,
                     dtype=tf.float32, swap_memory=True)
             encoded = tf.concat(2, outputs)
