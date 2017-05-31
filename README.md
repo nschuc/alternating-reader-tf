@@ -1,4 +1,4 @@
-# [Iterative Alternating Neural Attention in tensorflow] (https://arxiv.org/abs/1606.02245)
+# [Iterative Alternating Neural Attention in tensorflow](https://arxiv.org/abs/1606.02245)
 
 Short blog post on the results [here](https://nathanschucher.com/blog/alternating-neural-attention-for-machine-reading/)
 
